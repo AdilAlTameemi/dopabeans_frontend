@@ -56,6 +56,9 @@ function App() {
       </header>
 
       <main className="pt-20">
+        <div className="bg-yellow-300 text-black font-bold text-center py-4 text-xl z-50 shadow-md">
+          🚧 This website is under construction. Stay tuned! 🚧
+        </div>
         {/* Hero */}
         <section id="home" className="h-screen bg-cover bg-center flex flex-col justify-center items-center text-center" style={{ backgroundImage: `url(${heroImage})` }}>
           <div className="bg-white bg-opacity-80 p-6 rounded">
