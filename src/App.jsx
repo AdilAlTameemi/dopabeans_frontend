@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import heroImage from './assets/hero.png'
+import heroImage from './assets/hero.jpg'
 import flatWhite from './assets/flat-white.jpeg'
 import chocolateDrink from './assets/chocolate-drink.jpeg'
 import americano from './assets/americano.jpg'
@@ -91,6 +91,15 @@ function App() {
                   </li>
                 ))}
               </ul>
+            </div>
+
+            <div className="my-10">
+              <h3 className="text-lg sm:text-xl font-semibold mb-4">Test Image</h3>
+              <img
+                src="/images/products/iced-spanish-latte.jpg"
+                alt="Iced Spanish Latte"
+                className="w-64 h-auto object-cover mx-auto rounded shadow"
+              />
             </div>
 
             {/* Cold Drinks */}
