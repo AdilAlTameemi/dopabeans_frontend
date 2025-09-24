@@ -1,18 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import heroImage from './assets/hero.jpg'
-import flatWhite from './assets/flat-white.jpeg'
-import chocolateDrink from './assets/chocolate-drink.jpeg'
-import americano from './assets/americano.jpg'
-import pistachioMilkshake from './assets/pistachio-milkshake.jpeg'
-import caiSmoothie from './assets/cai-smoothie.jpeg'
-import matchaLatte from './assets/matcha-latte.jpeg'
-import cremeMatcha from './assets/creme-matcha.jpeg'
-import hibiscusIcedTea from './assets/hibiscus-iced-tea.jpeg'
-import icedAmericano from './assets/iced-americano.jpeg'
-import icedEspresso from './assets/iced-espresso.jpeg'
-import icedSpanishLatte from './assets/iced-spanish-latte.jpg'
-import icedCaramelLatte from './assets/iced-caramel-latte.jpeg'
-import mochaccinoDark from './assets/mochaccino-dark.jpeg'
 
 const CurrencyIcon = ({ className = '' }) => (
   <svg
@@ -153,41 +140,36 @@ function App() {
             <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
           </button>
           <nav
-            className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg"
+            className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-white"
             data-ignore-auto-contrast
-            style={{ color: '#ffffff' }}
           >
             <button
               onClick={() => scrollTo('menu')}
-              className="hover:opacity-80"
+              className="hover:opacity-80 text-white"
               data-ignore-auto-contrast
-              style={{ color: '#ffffff' }}
             >
               Menu
             </button>
             <button
               onClick={() => scrollTo('vision')}
-              className="hover:opacity-80"
+              className="hover:opacity-80 text-white"
               data-ignore-auto-contrast
-              style={{ color: '#ffffff' }}
             >
               Vision
             </button>
             <button
               onClick={() => scrollTo('contact')}
-              className="hover:opacity-80"
+              className="hover:opacity-80 text-white"
               data-ignore-auto-contrast
-              style={{ color: '#ffffff' }}
             >
               Contact
             </button>
             <button
               onClick={() => scrollTo('about')}
-              className="hover:opacity-80"
+              className="hover:opacity-80 text-white"
               data-ignore-auto-contrast
-              style={{ color: '#ffffff' }}
             >
-              About
+              About Us
             </button>
           </nav>
           <button className="md:hidden text-white" onClick={() => setMenuOpen(!menuOpen)}>
@@ -203,7 +185,7 @@ function App() {
             <button onClick={() => scrollTo('menu')} className="block w-full text-white">Menu</button>
             <button onClick={() => scrollTo('vision')} className="block w-full text-white">Vision</button>
             <button onClick={() => scrollTo('contact')} className="block w-full text-white">Contact</button>
-            <button onClick={() => scrollTo('about')} className="block w-full text-white">About</button>
+            <button onClick={() => scrollTo('about')} className="block w-full text-white">About Us</button>
           </div>
         )}
       </header>
