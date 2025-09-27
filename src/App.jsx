@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import heroImage from './assets/hero.jpg'
 
 const CurrencyIcon = ({ className = '' }) => (
   <svg
@@ -135,50 +134,52 @@ function App() {
     >
       {/* Navbar */}
       <header className="absolute top-0 left-0 w-full z-50">
-        <div className="flex justify-between items-center p-4 pr-4 pl-[1cm] w-full">
-          <button type="button" onClick={() => scrollTo('home')} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
-            <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
-          </button>
-          <nav
-            className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-white"
-            data-ignore-auto-contrast
-          >
-            <button
-              onClick={() => scrollTo('menu')}
-              className="hover:opacity-80 text-white"
+        <div className="px-2 sm:px-10 pt-6">
+          <div className="bg-white bg-opacity-95 rounded shadow-2xl flex justify-between items-center py-1.5 sm:py-2 px-3 sm:px-5 w-full max-w-[96rem] mx-auto">
+            <button type="button" onClick={() => scrollTo('home')} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
+              <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
+            </button>
+            <nav
+              className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-[#23314F]"
               data-ignore-auto-contrast
             >
-              Menu
+              <button
+                onClick={() => scrollTo('menu')}
+                className="hover:opacity-80 text-[#23314F]"
+                data-ignore-auto-contrast
+              >
+                Menu
+              </button>
+              <button
+                onClick={() => scrollTo('vision')}
+                className="hover:opacity-80 text-[#23314F]"
+                data-ignore-auto-contrast
+              >
+                Vision
+              </button>
+              <button
+                onClick={() => scrollTo('contact')}
+                className="hover:opacity-80 text-[#23314F]"
+                data-ignore-auto-contrast
+              >
+                Contact
+              </button>
+              <button
+                onClick={() => scrollTo('about')}
+                className="hover:opacity-80 text-[#23314F]"
+                data-ignore-auto-contrast
+              >
+                About Us
+              </button>
+            </nav>
+            <button className="md:hidden text-[#23314F]" onClick={() => setMenuOpen(!menuOpen)}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"
+                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
-            <button
-              onClick={() => scrollTo('vision')}
-              className="hover:opacity-80 text-white"
-              data-ignore-auto-contrast
-            >
-              Vision
-            </button>
-            <button
-              onClick={() => scrollTo('contact')}
-              className="hover:opacity-80 text-white"
-              data-ignore-auto-contrast
-            >
-              Contact
-            </button>
-            <button
-              onClick={() => scrollTo('about')}
-              className="hover:opacity-80 text-white"
-              data-ignore-auto-contrast
-            >
-              About Us
-            </button>
-          </nav>
-          <button className="md:hidden text-white" onClick={() => setMenuOpen(!menuOpen)}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"
-              viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
+          </div>
         </div>
         {menuOpen && (
           <div className="md:hidden bg-[#23314F] shadow px-4 pb-4 space-y-3 text-center">
@@ -190,29 +191,43 @@ function App() {
         )}
       </header>
 
-      <main>
+      <main className="pt-0 sm:pt-1">
 
         {/* Hero */}
         <section
           id="home"
-          className="relative z-0 h-screen bg-cover bg-center flex flex-col justify-center items-center text-center"
-          style={{ backgroundImage: `url(${heroImage})` }}
+          className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-24 pb-44"
         >
-          <div className="mt-24 bg-white bg-opacity-80 p-4 sm:p-6 w-11/12 sm:w-auto rounded">
-            <h2 className="text-2xl sm:text-3xl font-semibold mb-2">Welcome to DopaBeans</h2>
-            <p className="text-3xl sm:text-5xl font-extrabold text-gray-800">Dopamine By Coffee Bean</p>
+          <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-12 sm:py-20 overflow-auto">
+            <div
+              className="bg-white p-4 sm:p-6 rounded shadow-2xl"
+              style={{ width: '96rem', minWidth: '96rem', maxWidth: '96rem', height: '54rem', minHeight: '54rem', maxHeight: '54rem' }}
+            >
+              <img
+                src="/images/hero/hero.jpg"
+                alt="Guests enjoying the atmosphere at DopaBeans Café"
+                className="w-full h-full object-cover rounded"
+              />
+            </div>
+          </div>
+          <div className="absolute inset-x-0 px-4 z-20" style={{ top: '40%' }}>
+            <div className="bg-white bg-opacity-90 p-4 sm:p-6 rounded shadow-xl max-w-3xl mx-auto">
+              <h2 className="text-2xl sm:text-3xl font-semibold mb-2">Welcome to DopaBeans</h2>
+              <p className="text-3xl sm:text-5xl font-extrabold text-gray-800">Dopamine By Coffee Bean</p>
+            </div>
           </div>
         </section>
 
         {/* Menu */}
-        <section id="menu" className="py-20 text-left px-4 sm:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-10 text-center">Our Menu</h2>
-          <div className="space-y-16 w-full">
+        <section id="menu" className="-mt-32 sm:-mt-52 py-20 px-2 sm:px-10">
+          <div className="w-full max-w-[96rem] mx-auto text-left">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-10 text-center">Our Menu</h2>
+            <div className="space-y-16 w-full">
               
               {/* Hot Drinks */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Hot Drinks</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Hot Drinks</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "Espresso", price: 18, img: "/images/products/espresso.jpg" },
                     { name: "Piccolo", price: 22, img: "/images/products/piccolo.jpg" },
@@ -242,8 +257,8 @@ function App() {
 
               {/* Cold Drinks */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Cold Drinks</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Cold Drinks</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "DopaBeans Signature Cold", price: 35, img: "/images/products/dopabeans-signature-cold.jpg" },
                     { name: "Iced Spanish Latte", price: 28, img: "/images/products/iced-spanish-latte.jpg" },
@@ -271,8 +286,8 @@ function App() {
 
               {/* Matcha */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Matcha</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Matcha</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "Regular Matcha", price: 29, img: "/images/products/regular-matcha.jpg" },
                     { name: "DopaBeans Matcha", price: 37, img: "/images/products/dopabeans-matcha.jpg" },
@@ -295,8 +310,8 @@ function App() {
 
               {/* Mojitos */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Mojitos</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Mojitos</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "Special Karkade", price: 30, img: "/images/products/spacial-karkade.jpg" },
                     { name: "Mojitos", price: 30, img: "/images/products/dopabeans-mojitos.jpg" }
@@ -317,8 +332,8 @@ function App() {
 
               {/* Açaí */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Açaí</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Açaí</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "Açaí Smoothie", price: 34, img: "/images/products/acai-smoothie.jpg" },
                     { name: "Açaí Bowl", price: 40, img: "/images/products/acai-bowl.jpg" }
@@ -339,8 +354,8 @@ function App() {
 
               {/* Filtered Coffee */}
               <div>
-                <h3 className="text-lg sm:text-xl font-semibold mb-4">Filtered Coffee</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory px-1 pb-2 justify-start">
+                <h3 className="text-xl sm:text-2xl font-bold mb-4">Filtered Coffee</h3>
+                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                   {[
                     { name: "V60", price: 33, img: "/images/products/v60.jpg" },
                     { name: "Cold Brew", price: 30, img: "/images/products/cold-brew.jpg" }
@@ -360,29 +375,36 @@ function App() {
               </div>
 
             </div>
-          </section>
+          </div>
+        </section>
 
         {/* Vision */}
-        <section id="vision" className="py-20 text-center px-4 sm:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-4">Our Vision</h2>
-          <p className="text-gray-600">
-            More than a café – we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
-          </p>
+        <section id="vision" className="py-20 px-4 sm:px-8 text-center">
+          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+            <h2 className="text-2xl sm:text-3xl font-bold">Our Vision</h2>
+            <p className="text-gray-700">
+              More than a café – we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
+            </p>
+          </div>
         </section>
 
         {/* About Us */}
-        <section id="about" className="py-20 text-center px-4 sm:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-6">About Us</h2>
-          <p className="max-w-3xl mx-auto text-base sm:text-lg text-gray-600">
-            More than just a café, DopaBeans is a gathering place where genuine moments come to life—rooted in quality craftsmanship, heartfelt care, and the simple joy that only exceptional coffee can bring.
-          </p>
+        <section id="about" className="py-20 px-4 sm:px-8 text-center">
+          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+            <h2 className="text-2xl sm:text-3xl font-bold">About Us</h2>
+            <p className="text-base sm:text-lg text-gray-700">
+              More than just a café, DopaBeans is a gathering place where genuine moments come to life—rooted in quality craftsmanship, heartfelt care, and the simple joy that only exceptional coffee can bring.
+            </p>
+          </div>
         </section>
 
         {/* Contact */}
-        <section id="contact" className="py-20 text-center px-4 sm:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-6">Contact Us</h2>
-          <p className="text-base sm:text-lg">info@dopabeansuae.com</p>
-          <p className="text-base sm:text-lg">Instagram: @dopabeansuae</p>
+        <section id="contact" className="py-20 px-4 sm:px-8 text-center">
+          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+            <h2 className="text-2xl sm:text-3xl font-bold">Contact Us</h2>
+            <p className="text-base sm:text-lg text-gray-700">info@dopabeansuae.com</p>
+            <p className="text-base sm:text-lg text-gray-700">Instagram: @dopabeansuae</p>
+          </div>
         </section>
 
         {/* Footer */}
