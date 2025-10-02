@@ -2,6 +2,40 @@ import React, { useEffect, useState } from 'react'
 
 const MENU_SHEET_CSV_URL =
   'https://docs.google.com/spreadsheets/d/10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8/export?format=csv'
+const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v1'
+const MENU_CACHE_TTL_MS = 1000 * 60 * 30
+const PRODUCT_IMAGE_MAP = {
+  product_001: '/images/products/espresso.jpg',
+  product_002: '/images/products/piccolo.jpg',
+  product_003: '/images/products/cortado.jpg',
+  product_004: '/images/products/cappuccino.jpg',
+  product_005: '/images/products/americano.jpg',
+  product_006: '/images/products/flat-white.jpg',
+  product_007: '/images/products/latte.jpg',
+  product_008: '/images/products/spanish-latte.jpg',
+  product_009: '/images/products/dopabeans-signature-hot.jpg',
+  product_010: '/images/products/spanish-cortado.jpg',
+  product_011: '/images/products/pistachio-latte.jpg',
+  product_012: '/images/products/dopabeans-signature-cold.jpg',
+  product_013: '/images/products/iced-spanish-latte.jpg',
+  product_014: '/images/products/iced-latte.jpg',
+  product_015: '/images/products/iced-americano.jpg',
+  product_016: '/images/products/iced-pistachio-latte.jpg',
+  product_017: '/images/products/iced-tea.jpg',
+  product_018: '/images/products/iced-tea-passion.jpg',
+  product_019: '/images/products/iced-tea-peach.jpg',
+  product_020: '/images/products/iced-tea-strawberry.jpg',
+  product_021: '/images/products/regular-matcha.jpg',
+  product_022: '/images/products/dopabeans-matcha.jpg',
+  product_023: '/images/products/cloud-matcha.jpg',
+  product_024: '/images/products/strawberry-matcha.jpg',
+  product_025: '/images/products/spacial-karkade.jpg',
+  product_026: '/images/products/dopabeans-mojitos.jpg',
+  product_027: '/images/products/acai-smoothie.jpg',
+  product_028: '/images/products/acai-bowl.jpg',
+  product_029: '/images/products/v60.jpg',
+  product_030: '/images/products/cold-brew.jpg'
+}
 
 const parseCsv = (csvText) => {
   const rows = []
@@ -90,7 +124,7 @@ const buildMenuSections = (csvRows) => {
       name: item.product_name || 'Untitled Item',
       price: Number.isFinite(priceValue) ? priceValue : null,
       rawPrice: item.product_price || '',
-      image: item.product_image_url || '/images/logo.png',
+      imageUrl: item.product_image_url || '',
       description: item.product_description || '',
       link: item.product_link || '',
       availability: item.product_availability || 'in stock'
@@ -182,6 +216,15 @@ function App() {
   const [menuSections, setMenuSections] = useState([])
   const [menuStatus, setMenuStatus] = useState('idle')
   const [menuError, setMenuError] = useState(null)
+  const [selectedProduct, setSelectedProduct] = useState(null)
+
+  const closeProductModal = () => {
+    setSelectedProduct(null)
+  }
+
+  const handleProductSelect = (product) => {
+    setSelectedProduct(product)
+  }
 
   const scrollTo = (id) => {
     const section = document.getElementById(id)
@@ -194,9 +237,40 @@ function App() {
   useEffect(() => {
     let isMounted = true
 
-    const loadMenu = async () => {
-      setMenuStatus('loading')
-      setMenuError(null)
+    const loadFromCache = () => {
+      if (typeof window === 'undefined') return null
+      try {
+        const rawCache = window.localStorage.getItem(MENU_CACHE_STORAGE_KEY)
+        if (!rawCache) return null
+        const parsedCache = JSON.parse(rawCache)
+        if (!parsedCache || !Array.isArray(parsedCache.sections)) return null
+        return parsedCache
+      } catch (error) {
+        return null
+      }
+    }
+
+    const saveToCache = (sections) => {
+      if (typeof window === 'undefined') return
+      try {
+        const payload = JSON.stringify({ sections, timestamp: Date.now() })
+        window.localStorage.setItem(MENU_CACHE_STORAGE_KEY, payload)
+      } catch (error) {
+        // Swallow caching errors; rendering should continue
+      }
+    }
+
+    const cachedMenu = loadFromCache()
+    if (cachedMenu && isMounted) {
+      setMenuSections(cachedMenu.sections)
+      setMenuStatus('success')
+    }
+
+    const fetchMenu = async ({ background = false } = {}) => {
+      if (!background) {
+        setMenuStatus(cachedMenu ? 'success' : 'loading')
+        setMenuError(null)
+      }
 
       try {
         const response = await fetch(MENU_SHEET_CSV_URL, {
@@ -216,17 +290,27 @@ function App() {
         if (isMounted) {
           setMenuSections(sections)
           setMenuStatus('success')
+          setMenuError(null)
+          saveToCache(sections)
         }
       } catch (error) {
-        if (isMounted) {
+        if (!isMounted) return
+
+        if (!background || !cachedMenu) {
           setMenuSections([])
           setMenuStatus('error')
-          setMenuError(error.message)
         }
+        setMenuError(error.message)
       }
     }
 
-    loadMenu()
+    const cacheTimestamp = typeof cachedMenu?.timestamp === 'number' ? cachedMenu.timestamp : 0
+    const cacheIsStale = !cachedMenu || !cacheTimestamp || Date.now() - cacheTimestamp > MENU_CACHE_TTL_MS
+    if (cacheIsStale) {
+      fetchMenu({ background: false })
+    } else {
+      fetchMenu({ background: true })
+    }
 
     return () => {
       isMounted = false
@@ -278,6 +362,22 @@ function App() {
       window.removeEventListener('resize', scheduleContrast)
     }
   }, [menuOpen])
+
+  useEffect(() => {
+    if (!selectedProduct) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeProductModal()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedProduct])
 
   return (
     <div
@@ -399,18 +499,28 @@ function App() {
                       const normalizedAvailability = (item.availability || '').toLowerCase()
                       const isInStock = normalizedAvailability === 'in stock'
                       const displayPrice = item.price != null ? item.price : item.rawPrice || 'Ask'
+                      const sheetImagePath = item.imageUrl ? item.imageUrl.replace(/^https?:\/\/[^/]+/i, '') : ''
+                      const imageSrc = PRODUCT_IMAGE_MAP[item.id] || sheetImagePath || item.imageUrl || '/images/logo.png'
+                      const productDetails = { ...item, displayPrice, imageSrc }
 
                       return (
                         <li
                           key={item.id}
                           className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left"
                         >
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]"
-                            loading="lazy"
-                          />
+                          <button
+                            type="button"
+                            onClick={() => handleProductSelect(productDetails)}
+                            className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
+                            aria-label={`View details for ${item.name}`}
+                          >
+                            <img
+                              src={imageSrc}
+                              alt={item.name}
+                              className="rounded w-full object-cover aspect-square max-w-[200px]"
+                              loading="lazy"
+                            />
+                          </button>
                           <div className="text-sm sm:text-base">
                             <span className="font-medium block">{item.name}</span>
                             <span className="flex items-center gap-1">
@@ -481,6 +591,69 @@ function App() {
         </footer>
 
       </main>
+      {selectedProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 px-4"
+          onClick={closeProductModal}
+        >
+          <div
+            className="relative w-full max-w-sm sm:max-w-md"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-modal-title"
+            aria-describedby={selectedProduct.description ? 'product-modal-description' : undefined}
+          >
+            <button
+              type="button"
+              onClick={closeProductModal}
+              className="absolute -top-10 right-0 text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent focus:ring-white"
+              aria-label="Close product details"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-6 h-6"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <div className="bg-gray-100 p-4 rounded shadow text-left">
+              <div className="overflow-hidden rounded">
+                <img
+                  src={selectedProduct.imageSrc}
+                  alt={selectedProduct.name}
+                  className="w-full object-cover aspect-square"
+                />
+              </div>
+              <div className="mt-4 space-y-2">
+                <h3 id="product-modal-title" className="text-xl sm:text-2xl font-semibold text-[#23314F]">
+                  {selectedProduct.name}
+                </h3>
+                <div className="flex items-center gap-2 text-lg font-medium text-gray-800">
+                  <CurrencyIcon className="w-5 h-5" />
+                  {selectedProduct.displayPrice}
+                </div>
+                {selectedProduct.description ? (
+                  <p id="product-modal-description" className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                    {selectedProduct.description}
+                  </p>
+                ) : (
+                  <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
+                )}
+                {selectedProduct.availability && selectedProduct.availability.toLowerCase() !== 'in stock' && (
+                  <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
+                    {selectedProduct.availability}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
