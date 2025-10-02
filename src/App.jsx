@@ -1,5 +1,113 @@
 import React, { useEffect, useState } from 'react'
 
+const MENU_SHEET_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8/export?format=csv'
+
+const parseCsv = (csvText) => {
+  const rows = []
+  let currentRow = []
+  let currentField = ''
+  let inQuotes = false
+
+  for (let i = 0; i < csvText.length; i += 1) {
+    const char = csvText[i]
+    const nextChar = csvText[i + 1]
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (nextChar === '"') {
+          currentField += '"'
+          i += 1
+        } else {
+          inQuotes = false
+        }
+      } else {
+        currentField += char
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = true
+      continue
+    }
+
+    if (char === ',') {
+      currentRow.push(currentField)
+      currentField = ''
+      continue
+    }
+
+    if (char === '\r') {
+      continue
+    }
+
+    if (char === '\n') {
+      currentRow.push(currentField)
+      rows.push(currentRow)
+      currentRow = []
+      currentField = ''
+      continue
+    }
+
+    currentField += char
+  }
+
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField)
+    rows.push(currentRow)
+  }
+
+  return rows
+}
+
+const buildMenuSections = (csvRows) => {
+  if (!csvRows.length) return []
+
+  const [headerRow, ...dataRows] = csvRows
+  const headers = headerRow.map((header) => header.trim())
+
+  const items = dataRows
+    .filter((row) => row.some((cell) => cell && cell.trim() !== ''))
+    .map((row) =>
+      headers.reduce((acc, header, index) => {
+        acc[header] = row[index] ? row[index].trim() : ''
+        return acc
+      }, {})
+    )
+
+  const sections = new Map()
+
+  items.forEach((item) => {
+    const category = item.product_category || 'Other'
+    if (!sections.has(category)) {
+      sections.set(category, [])
+    }
+
+    const priceValue = Number(item.product_price)
+    sections.get(category).push({
+      id: item.product_id || item.product_name,
+      name: item.product_name || 'Untitled Item',
+      price: Number.isFinite(priceValue) ? priceValue : null,
+      rawPrice: item.product_price || '',
+      image: item.product_image_url || '/images/logo.png',
+      description: item.product_description || '',
+      link: item.product_link || '',
+      availability: item.product_availability || 'in stock'
+    })
+  })
+
+  return Array.from(sections.entries()).map(([category, products]) => ({
+    category,
+    products: products.sort((a, b) => {
+      if (a.price == null && b.price == null) return 0
+      if (a.price == null) return 1
+      if (b.price == null) return -1
+      return b.price - a.price
+    })
+  }))
+}
+
 const CurrencyIcon = ({ className = '' }) => (
   <svg
     className={`inline-block ${className}`}
@@ -71,6 +179,9 @@ const hasVisibleText = (element) => {
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuSections, setMenuSections] = useState([])
+  const [menuStatus, setMenuStatus] = useState('idle')
+  const [menuError, setMenuError] = useState(null)
 
   const scrollTo = (id) => {
     const section = document.getElementById(id)
@@ -79,6 +190,48 @@ function App() {
       setMenuOpen(false)
     }
   }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMenu = async () => {
+      setMenuStatus('loading')
+      setMenuError(null)
+
+      try {
+        const response = await fetch(MENU_SHEET_CSV_URL, {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error(`Unable to load menu data (${response.status})`)
+        }
+
+        const csvText = await response.text()
+        const rows = parseCsv(csvText)
+        const sections = buildMenuSections(rows)
+
+        if (isMounted) {
+          setMenuSections(sections)
+          setMenuStatus('success')
+        }
+      } catch (error) {
+        if (isMounted) {
+          setMenuSections([])
+          setMenuStatus('error')
+          setMenuError(error.message)
+        }
+      }
+    }
+
+    loadMenu()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
@@ -223,156 +376,59 @@ function App() {
           <div className="w-full max-w-[96rem] mx-auto text-left">
             <h2 className="text-2xl sm:text-3xl font-bold mb-10 text-center">Our Menu</h2>
             <div className="space-y-16 w-full">
-              
-              {/* Hot Drinks */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Hot Drinks</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "Espresso", price: 18, img: "/images/products/espresso.jpg" },
-                    { name: "Piccolo", price: 22, img: "/images/products/piccolo.jpg" },
-                    { name: "Cortado", price: 24, img: "/images/products/cortado.jpg" },
-                    { name: "Cappuccino", price: 25, img: "/images/products/cappuccino.jpg" },
-                    { name: "Americano", price: 21, img: "/images/products/americano.jpg" },
-                    { name: "Flat White", price: 25, img: "/images/products/flat-white.jpg" },
-                    { name: "Latte", price: 25, img: "/images/products/latte.jpg" },
-                    { name: "Spanish Latte", price: 28, img: "/images/products/spanish-latte.jpg" },
-                    { name: "DopaBeans Signature Hot", price: 35, img: "/images/products/dopabeans-signature-hot.jpg" },
-                    { name: "Spanish Cortado", price: 25, img: "/images/products/spanish-cortado.jpg" },
-                    { name: "Pistachio Latte", price: 30, img: "/images/products/pistachio-latte.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {menuStatus === 'loading' && (
+                <p className="text-center text-base sm:text-lg text-gray-600">Loading the latest menu…</p>
+              )}
 
-              {/* Cold Drinks */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Cold Drinks</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "DopaBeans Signature Cold", price: 35, img: "/images/products/dopabeans-signature-cold.jpg" },
-                    { name: "Iced Spanish Latte", price: 28, img: "/images/products/iced-spanish-latte.jpg" },
-                    { name: "Iced Latte", price: 25, img: "/images/products/iced-latte.jpg" },
-                    { name: "Iced Americano", price: 22, img: "/images/products/iced-americano.jpg" },
-                    { name: "Iced Pistachio Latte", price: 30, img: "/images/products/iced-pistachio-latte.jpg" },
-                    { name: "Iced Tea", price: 23, img: "/images/products/iced-tea.jpg" },
-                    { name: "Iced Tea Passion", price: 23, img: "/images/products/iced-tea-passion.jpg" },
-                    { name: "Iced Tea Peach", price: 23, img: "/images/products/iced-tea-peach.jpg" },
-                    { name: "Iced Tea Strawberry", price: 23, img: "/images/products/iced-tea-strawberry.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {menuStatus === 'error' && (
+                <div className="text-center text-base sm:text-lg text-red-700 bg-red-100 border border-red-200 rounded p-4">
+                  <p>We couldn't load the menu right now.</p>
+                  {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
+                </div>
+              )}
 
-              {/* Matcha */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Matcha</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "Regular Matcha", price: 29, img: "/images/products/regular-matcha.jpg" },
-                    { name: "DopaBeans Matcha", price: 37, img: "/images/products/dopabeans-matcha.jpg" },
-                    { name: "Cloud Matcha", price: 37, img: "/images/products/cloud-matcha.jpg" },
-                    { name: "Strawberry Matcha", price: 37, img: "/images/products/strawberry-matcha.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {menuStatus === 'success' && menuSections.length === 0 && (
+                <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
+              )}
 
-              {/* Mojitos */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Mojitos</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "Special Karkade", price: 30, img: "/images/products/spacial-karkade.jpg" },
-                    { name: "Mojitos", price: 30, img: "/images/products/dopabeans-mojitos.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {menuSections.map((section) => (
+                <div key={section.category}>
+                  <h3 className="text-xl sm:text-2xl font-bold mb-4">{section.category}</h3>
+                  <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
+                    {section.products.map((item) => {
+                      const normalizedAvailability = (item.availability || '').toLowerCase()
+                      const isInStock = normalizedAvailability === 'in stock'
+                      const displayPrice = item.price != null ? item.price : item.rawPrice || 'Ask'
 
-              {/* Açaí */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Açaí</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "Açaí Smoothie", price: 34, img: "/images/products/acai-smoothie.jpg" },
-                    { name: "Açaí Bowl", price: 40, img: "/images/products/acai-bowl.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Filtered Coffee */}
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-4">Filtered Coffee</h3>
-                <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                  {[
-                    { name: "V60", price: 33, img: "/images/products/v60.jpg" },
-                    { name: "Cold Brew", price: 30, img: "/images/products/cold-brew.jpg" }
-                  ].sort((a, b) => b.price - a.price).map((item, i) => (
-                    <li key={i} className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left">
-                      <img src={item.img} alt={item.name} className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]" />
-                      <div className="text-sm sm:text-base">
-                        <span className="font-medium block">{item.name}</span>
-                        <span className="flex items-center gap-1">
-                          <CurrencyIcon className="w-4 h-4" />
-                          {item.price}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                      return (
+                        <li
+                          key={item.id}
+                          className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left"
+                        >
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="mb-2 rounded w-full object-cover aspect-square max-w-[200px]"
+                            loading="lazy"
+                          />
+                          <div className="text-sm sm:text-base">
+                            <span className="font-medium block">{item.name}</span>
+                            <span className="flex items-center gap-1">
+                              <CurrencyIcon className="w-4 h-4" />
+                              {displayPrice}
+                            </span>
+                            {!isInStock && normalizedAvailability && (
+                              <span className="mt-1 inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
+                                {item.availability}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
 
             </div>
           </div>
