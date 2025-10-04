@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 const MENU_SHEET_CSV_URL =
   'https://docs.google.com/spreadsheets/d/10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8/export?format=csv'
@@ -35,6 +35,34 @@ const PRODUCT_IMAGE_MAP = {
   product_028: '/images/products/acai-bowl.jpg',
   product_029: '/images/products/v60.jpg',
   product_030: '/images/products/cold-brew.jpg'
+}
+
+const createProductSlug = (rawValue) => {
+  if (!rawValue) return ''
+  return rawValue
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+const mapProductToDetails = (item) => {
+  const normalizedAvailability = (item.availability || '').toLowerCase()
+  const isInStock = normalizedAvailability === 'in stock'
+  const displayPrice = item.price != null ? item.price : item.rawPrice || 'Ask'
+  const sheetImagePath = item.imageUrl ? item.imageUrl.replace(/^https?:\/\/[^/]+/i, '') : ''
+  const imageSrc = PRODUCT_IMAGE_MAP[item.id] || sheetImagePath || item.imageUrl || '/images/logo.png'
+  const slugSource = item.product_slug || item.name || item.id
+  const slug = createProductSlug(slugSource)
+
+  return {
+    ...item,
+    normalizedAvailability,
+    isInStock,
+    displayPrice,
+    imageSrc,
+    slug
+  }
 }
 
 const parseCsv = (csvText) => {
@@ -217,6 +245,7 @@ function App() {
   const [menuStatus, setMenuStatus] = useState('idle')
   const [menuError, setMenuError] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [standaloneProductId, setStandaloneProductId] = useState(null)
 
   const closeProductModal = () => {
     setSelectedProduct(null)
@@ -233,6 +262,23 @@ function App() {
       setMenuOpen(false)
     }
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const syncStandaloneProduct = () => {
+      const params = new URLSearchParams(window.location.search)
+      const productParam = params.get('product')
+      setStandaloneProductId(productParam ? productParam.toLowerCase() : null)
+    }
+
+    syncStandaloneProduct()
+    window.addEventListener('popstate', syncStandaloneProduct)
+
+    return () => {
+      window.removeEventListener('popstate', syncStandaloneProduct)
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -379,6 +425,136 @@ function App() {
     }
   }, [selectedProduct])
 
+  const standaloneProduct = useMemo(() => {
+    if (!standaloneProductId) return null
+
+    const normalizedTarget = standaloneProductId.toLowerCase()
+
+    for (const section of menuSections) {
+      for (const product of section.products) {
+        const details = mapProductToDetails(product)
+        const candidates = [
+          details.slug,
+          product.id ? createProductSlug(product.id) : null,
+          product.name ? createProductSlug(product.name) : null,
+          product.id ? String(product.id).toLowerCase() : null,
+          product.name ? product.name.toLowerCase() : null
+        ].filter(Boolean)
+
+        if (candidates.includes(normalizedTarget)) {
+          return details
+        }
+      }
+    }
+
+    return null
+  }, [menuSections, standaloneProductId])
+
+  const isStandaloneView = Boolean(standaloneProductId)
+
+  const buildProductLink = (product) => {
+    const slug = createProductSlug(product?.slug || product?.name || product?.id)
+    const targetSlug = slug || (product?.id ? String(product.id).toLowerCase() : '')
+
+    if (!targetSlug) return '#'
+
+    if (typeof window === 'undefined') {
+      return `?product=${encodeURIComponent(targetSlug)}`
+    }
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('product', targetSlug)
+    url.hash = ''
+    return url.toString()
+  }
+
+  if (isStandaloneView) {
+    const baseMenuUrl = typeof window === 'undefined'
+      ? '/'
+      : (() => {
+          const url = new URL(window.location.href)
+          url.searchParams.delete('product')
+          return url.toString()
+        })()
+
+    let standaloneContent = null
+
+    if (menuStatus === 'loading' || menuStatus === 'idle') {
+      standaloneContent = (
+        <p className="text-center text-base sm:text-lg text-gray-700">Loading product details…</p>
+      )
+    } else if (menuStatus === 'error') {
+      standaloneContent = (
+        <div className="text-center text-base sm:text-lg text-red-700 bg-red-100 border border-red-200 rounded p-4">
+          <p>We couldn't load the product right now.</p>
+          {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
+        </div>
+      )
+    } else if (standaloneProduct) {
+      standaloneContent = (
+        <article className="bg-gray-100 p-4 sm:p-8 rounded shadow text-left space-y-5">
+          <div className="space-y-3">
+            <h1 className="text-2xl sm:text-3xl font-semibold text-[#23314F]">
+              {standaloneProduct.name}
+            </h1>
+            {standaloneProduct.description ? (
+              <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
+                {standaloneProduct.description}
+              </p>
+            ) : (
+              <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
+            )}
+            <div className="flex items-center gap-2 text-xl font-semibold text-gray-900">
+              <CurrencyIcon className="w-6 h-6" />
+              {standaloneProduct.displayPrice}
+            </div>
+            {!standaloneProduct.isInStock && standaloneProduct.normalizedAvailability && (
+              <span className="inline-block text-sm uppercase tracking-wide text-yellow-900 bg-yellow-200 px-3 py-1 rounded">
+                {standaloneProduct.availability}
+              </span>
+            )}
+          </div>
+          <div className="overflow-hidden rounded-lg">
+            <img
+              src={standaloneProduct.imageSrc}
+              alt={standaloneProduct.name}
+              className="w-full h-auto object-cover"
+              style={{ maxHeight: '70vh' }}
+            />
+          </div>
+        </article>
+      )
+    } else {
+      standaloneContent = (
+        <div className="text-center text-base sm:text-lg text-gray-700">
+          <p>We couldn't find that product.</p>
+        </div>
+      )
+    }
+
+    return (
+      <div
+        className="font-sans bg-background text-fontLightBackground"
+        data-auto-contrast-root
+        style={{ backgroundColor: '#E3E3DD' }}
+      >
+        <main className="min-h-screen flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-md sm:max-w-xl lg:max-w-3xl space-y-6">
+            {standaloneContent}
+            <div className="text-center">
+              <a
+                href={baseMenuUrl}
+                className="text-sm text-[#23314F] underline hover:opacity-80"
+              >
+                Back to full menu
+              </a>
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div
       className="font-sans bg-background text-fontLightBackground scroll-smooth"
@@ -496,12 +672,8 @@ function App() {
                   <h3 className="text-xl sm:text-2xl font-bold mb-4">{section.category}</h3>
                   <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                     {section.products.map((item) => {
-                      const normalizedAvailability = (item.availability || '').toLowerCase()
-                      const isInStock = normalizedAvailability === 'in stock'
-                      const displayPrice = item.price != null ? item.price : item.rawPrice || 'Ask'
-                      const sheetImagePath = item.imageUrl ? item.imageUrl.replace(/^https?:\/\/[^/]+/i, '') : ''
-                      const imageSrc = PRODUCT_IMAGE_MAP[item.id] || sheetImagePath || item.imageUrl || '/images/logo.png'
-                      const productDetails = { ...item, displayPrice, imageSrc }
+                      const productDetails = mapProductToDetails(item)
+                      const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
 
                       return (
                         <li
@@ -512,24 +684,31 @@ function App() {
                             type="button"
                             onClick={() => handleProductSelect(productDetails)}
                             className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
-                            aria-label={`View details for ${item.name}`}
+                            aria-label={`View details for ${productDetails.name}`}
                           >
                             <img
                               src={imageSrc}
-                              alt={item.name}
+                              alt={productDetails.name}
                               className="rounded w-full object-cover aspect-square max-w-[200px]"
                               loading="lazy"
                             />
                           </button>
                           <div className="text-sm sm:text-base">
-                            <span className="font-medium block">{item.name}</span>
+                            <a
+                              href={buildProductLink(productDetails)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium block text-[#23314F] hover:underline"
+                            >
+                              {productDetails.name}
+                            </a>
                             <span className="flex items-center gap-1">
                               <CurrencyIcon className="w-4 h-4" />
                               {displayPrice}
                             </span>
                             {!isInStock && normalizedAvailability && (
                               <span className="mt-1 inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
-                                {item.availability}
+                                {productDetails.availability}
                               </span>
                             )}
                           </div>
@@ -549,7 +728,7 @@ function App() {
           <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
             <h2 className="text-2xl sm:text-3xl font-bold">Our Vision</h2>
             <p className="text-gray-700">
-              More than a café – we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
+              More than a café, we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
             </p>
           </div>
         </section>
