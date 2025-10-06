@@ -41,7 +41,8 @@ const MILK_OPTIONS = [
   { value: 'normal', label: 'Normal' },
   { value: 'coconut', label: 'Coconut' },
   { value: 'almond', label: 'Almond' },
-  { value: 'oat', label: 'Oat' }
+  { value: 'oat', label: 'Oat' },
+  { value: 'none', label: 'No Milk' }
 ]
 
 const NON_CUSTOMIZABLE_PRODUCTS = new Set([
@@ -56,6 +57,48 @@ const NON_CUSTOMIZABLE_PRODUCTS = new Set([
   'product_027',
   'product_028'
 ])
+
+const getDefaultMilkValue = (options) => {
+  const normalOption = options?.find((option) => option.value === 'normal')
+  return normalOption?.value ?? options?.[0]?.value
+}
+
+const MilkSelector = ({ options, value, onChange }) => {
+  const [selectedMilk, setSelectedMilk] = useState(() => value ?? getDefaultMilkValue(options))
+
+  useEffect(() => {
+    setSelectedMilk(value ?? getDefaultMilkValue(options))
+  }, [value, options])
+
+  const handleSelection = (optionValue) => {
+    setSelectedMilk(optionValue)
+    if (typeof onChange === 'function') {
+      onChange(optionValue)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {options.map((option) => {
+        const isSelected = selectedMilk === option.value
+        const buttonClasses = isSelected
+          ? 'bg-gray-200 border-gray-300'
+          : 'bg-white border-gray-200 hover:bg-gray-100'
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => handleSelection(option.value)}
+            className={`w-full flex items-center justify-between rounded border px-4 py-3 font-medium transition-colors text-black ${buttonClasses}`}
+          >
+            <span>{option.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 const createInitialOrderFlowState = () => ({
   step: 'idle',
@@ -955,26 +998,7 @@ function App() {
                       Select your milk of choice for {cartFlow.product?.name}.
                     </p>
                   </div>
-                  <div className="space-y-3">
-                    {MILK_OPTIONS.map((option) => (
-                      <label
-                        key={option.value}
-                        className={`flex items-center justify-between border rounded px-4 py-3 cursor-pointer transition-colors ${
-                          cartFlow.milk === option.value ? 'border-[#23314F] bg-[#23314F] bg-opacity-5' : 'border-gray-200 hover:border-[#23314F]'
-                        }`}
-                      >
-                        <span className="text-base text-gray-800">{option.label}</span>
-                        <input
-                          type="radio"
-                          name="milk-selection"
-                          value={option.value}
-                          checked={cartFlow.milk === option.value}
-                          onChange={() => selectMilkOption(option.value)}
-                          className="w-4 h-4 accent-[#23314F]"
-                        />
-                      </label>
-                    ))}
-                  </div>
+                  <MilkSelector options={MILK_OPTIONS} value={cartFlow.milk} onChange={selectMilkOption} />
                   <div className="flex justify-end gap-3 pt-2">
                     <button
                       type="button"
@@ -1559,6 +1583,15 @@ function App() {
               <div className="bg-white bg-opacity-90 p-4 sm:p-6 rounded shadow-xl max-w-3xl mx-auto">
                 <h2 className="text-2xl sm:text-3xl font-semibold mb-2">Welcome to DopaBeans</h2>
                 <p className="text-3xl sm:text-5xl font-extrabold text-gray-800">Dopamine By Coffee Bean</p>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={handleNavigateMenuPage}
+                    className="px-6 py-3 rounded bg-[#23314F] text-white text-base sm:text-lg font-semibold hover:opacity-90"
+                  >
+                    View Menu
+                  </button>
+                </div>
               </div>
             </div>
           </section>
