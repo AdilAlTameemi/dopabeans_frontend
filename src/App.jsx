@@ -37,6 +37,34 @@ const PRODUCT_IMAGE_MAP = {
   product_030: '/images/products/cold-brew.jpg'
 }
 
+const MILK_OPTIONS = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'coconut', label: 'Coconut' },
+  { value: 'almond', label: 'Almond' },
+  { value: 'oat', label: 'Oat' }
+]
+
+const NON_CUSTOMIZABLE_PRODUCTS = new Set([
+  'special_karkade',
+  'spacial_karkade',
+  'mojitos',
+  'dopabeans_mojitos',
+  'acai_smoothie',
+  'acai_bowl',
+  'product_025',
+  'product_026',
+  'product_027',
+  'product_028'
+])
+
+const createInitialOrderFlowState = () => ({
+  step: 'idle',
+  type: null,
+  table: null
+})
+
+const ORDER_TABLE_NUMBERS = Array.from({ length: 8 }, (_, index) => index + 1)
+
 const createProductSlug = (rawValue) => {
   if (!rawValue) return ''
   return rawValue
@@ -240,12 +268,35 @@ const hasVisibleText = (element) => {
 }
 
 function App() {
+  const [currentPath, setCurrentPath] = useState(() => {
+    if (typeof window === 'undefined') return '/'
+    return window.location.pathname || '/'
+  })
+  const [pendingScrollTarget, setPendingScrollTarget] = useState(null)
+  const [cartItems, setCartItems] = useState([])
+  const [cartFlow, setCartFlow] = useState({
+    step: null,
+    product: null,
+    quantity: 1,
+    milk: 'normal',
+    requiresMilk: true,
+    mode: 'add',
+    originalEntryKey: null,
+    originalEntryId: null
+  })
+  const [cartFeedback, setCartFeedback] = useState(null)
+  const [cartModalOpen, setCartModalOpen] = useState(false)
+  const [orderFlow, setOrderFlow] = useState(createInitialOrderFlowState)
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuSections, setMenuSections] = useState([])
   const [menuStatus, setMenuStatus] = useState('idle')
   const [menuError, setMenuError] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [standaloneProductId, setStandaloneProductId] = useState(null)
+
+  const resetOrderFlow = () => {
+    setOrderFlow(createInitialOrderFlowState())
+  }
 
   const closeProductModal = () => {
     setSelectedProduct(null)
@@ -255,13 +306,310 @@ function App() {
     setSelectedProduct(product)
   }
 
-  const scrollTo = (id) => {
+  const scrollToSection = (id) => {
+    if (typeof document === 'undefined') return
     const section = document.getElementById(id)
     if (section) {
       section.scrollIntoView({ behavior: 'smooth' })
-      setMenuOpen(false)
     }
+    setMenuOpen(false)
   }
+
+  const navigateToPath = (path) => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    url.pathname = path
+    url.searchParams.delete('product')
+    window.history.pushState({}, '', url.toString())
+    setCurrentPath(url.pathname || '/')
+    setStandaloneProductId(null)
+    setSelectedProduct(null)
+    setMenuOpen(false)
+  }
+
+  const handleNavigateMenuPage = () => {
+    if (currentPath === '/menu') {
+      setMenuOpen(false)
+      return
+    }
+    navigateToPath('/menu')
+  }
+
+  const handleSectionNavigation = (targetId) => {
+    if (currentPath !== '/') {
+      setPendingScrollTarget(targetId)
+      navigateToPath('/')
+      return
+    }
+    scrollToSection(targetId)
+  }
+
+  const handleLogoClick = () => {
+    if (currentPath === '/') {
+      scrollToSection('home')
+      return
+    }
+    navigateToPath('/')
+  }
+
+  const openCartModal = () => {
+    resetOrderFlow()
+    setCartModalOpen(true)
+  }
+
+  const closeCartModal = () => {
+    setCartModalOpen(false)
+    resetOrderFlow()
+  }
+
+  const resetCartFlow = () => ({
+    step: null,
+    product: null,
+    quantity: 1,
+    milk: 'normal',
+    requiresMilk: true,
+    mode: 'add',
+    originalEntryKey: null,
+    originalEntryId: null
+  })
+
+  const closeCartFlow = () => {
+    setCartFlow(resetCartFlow())
+  }
+
+  const startOrderFlow = () => {
+    if (cartItems.length === 0) return
+    setOrderFlow({ step: 'type', type: null, table: null })
+  }
+
+  const handleSelectOrderType = (type) => {
+    if (type === 'in-house') {
+      setOrderFlow({ step: 'table', type, table: null })
+      return
+    }
+
+    setOrderFlow({ step: 'ready', type, table: null })
+  }
+
+  const handleSelectOrderTable = (tableNumber) => {
+    setOrderFlow({ step: 'ready', type: 'in-house', table: tableNumber })
+  }
+
+  const handleOrderFlowBackToType = () => {
+    setOrderFlow({ step: 'type', type: null, table: null })
+  }
+
+  const handleChangeTableSelection = () => {
+    setOrderFlow({ step: 'table', type: 'in-house', table: orderFlow.table })
+  }
+
+  const handleOrderPayNow = () => {
+    const feedbackMessage =
+      orderFlow.type === 'in-house' && orderFlow.table
+        ? `Table ${orderFlow.table} order is ready for payment.`
+        : 'Takeaway order is ready for payment.'
+
+    setCartFeedback(feedbackMessage)
+    closeCartModal()
+  }
+
+  const getProductKey = (product) => {
+    if (!product) return ''
+    if (product.id) return String(product.id).toLowerCase()
+    if (product.slug) return String(product.slug).toLowerCase()
+    if (product.name) return createProductSlug(product.name)
+    return ''
+  }
+
+  const getProductSlugValue = (product) => createProductSlug(product?.slug || product?.name || product?.id)
+
+  const isProductCustomizable = (product) => {
+    const slug = getProductSlugValue(product)
+    const key = getProductKey(product)
+    return !(NON_CUSTOMIZABLE_PRODUCTS.has(slug) || NON_CUSTOMIZABLE_PRODUCTS.has(key))
+  }
+
+  const startAddToCart = (product, options = {}) => {
+    if (!product || product.isInStock === false) return
+
+    const key = getProductKey(product)
+    const existingItem = cartItems.find((item) => (item.productKey || getProductKey(item.product)) === key)
+    const customizable = isProductCustomizable(product)
+    const isEditFlow = Boolean(options.fromCartEdit)
+    const entryContext = options.entry || null
+    const existingQuantity = entryContext ? Number(entryContext.quantity) || 0 : existingItem ? Number(existingItem.quantity) || 0 : 0
+    const initialQuantity = isEditFlow ? Math.max(existingQuantity, 1) : 1
+    const defaultMilk = cartFlow.milk || MILK_OPTIONS[0].value
+    const initialMilk = customizable
+      ? entryContext && entryContext.milk != null
+        ? entryContext.milk
+        : existingItem && existingItem.milk != null
+          ? existingItem.milk
+          : defaultMilk
+      : null
+    const mode = options.fromCartEdit ? 'update' : 'add'
+
+    setCartFlow({
+      step: 'quantity',
+      product,
+      quantity: initialQuantity,
+      milk: customizable ? initialMilk : null,
+      requiresMilk: customizable,
+      mode,
+      originalEntryKey: entryContext?.entryKey || (isEditFlow ? (existingItem?.entryKey || key) : null),
+      originalEntryId: entryContext?.id || (isEditFlow ? existingItem?.id || null : null)
+    })
+  }
+
+  const setCartFlowQuantity = (value) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return
+    const sanitized = Math.max(1, Math.min(20, Math.floor(parsed)))
+    setCartFlow((prev) => ({ ...prev, quantity: sanitized }))
+  }
+
+  const incrementCartQuantity = () => {
+    setCartFlow((prev) => ({ ...prev, quantity: Math.max(1, Math.min(20, prev.quantity + 1)) }))
+  }
+
+  const decrementCartQuantity = () => {
+    setCartFlow((prev) => ({ ...prev, quantity: Math.max(1, Math.min(20, prev.quantity - 1)) }))
+  }
+
+  const advanceToMilkSelection = () => {
+    setCartFlow((prev) => {
+      if (!prev.requiresMilk) return prev
+      return { ...prev, step: 'milk' }
+    })
+  }
+
+  const backToQuantityStep = () => {
+    setCartFlow((prev) => ({ ...prev, step: 'quantity' }))
+  }
+
+  const selectMilkOption = (value) => {
+    setCartFlow((prev) => ({ ...prev, milk: value }))
+  }
+
+  const removeCartItem = (itemId) => {
+    setCartItems((prev) => prev.filter((item) => item.id !== itemId))
+  }
+
+  const handleEditCartItem = (item) => {
+    if (!item?.product) return
+    closeCartModal()
+
+    window.setTimeout(() => {
+      startAddToCart(item.product, { fromCartEdit: true, entry: item })
+    }, 0)
+  }
+
+  const finalizeCartItem = () => {
+    const {
+      product,
+      requiresMilk,
+      milk: selectedMilk,
+      quantity,
+      mode,
+      originalEntryKey: flowOriginalEntryKey,
+      originalEntryId
+    } = cartFlow
+
+    if (!product) return
+
+    const milk = requiresMilk ? selectedMilk || 'normal' : null
+    const targetKey = getProductKey(product)
+    const entryKey = requiresMilk ? `${targetKey}::${milk}` : targetKey
+    const originalEntryKey = flowOriginalEntryKey || targetKey
+    const resolvedOriginalEntryId = originalEntryId || null
+
+    setCartItems((currentItems) => {
+      const cleanedItems = currentItems.filter((item) => {
+        const itemKey = item.entryKey || item.productKey || getProductKey(item.product)
+        if (mode === 'update' && itemKey === originalEntryKey) {
+          return false
+        }
+        return true
+      })
+
+      const existingIndex = cleanedItems.findIndex(
+        (item) => (item.entryKey || item.productKey || getProductKey(item.product)) === entryKey
+      )
+
+      if (existingIndex !== -1) {
+        const updated = [...cleanedItems]
+        const existingItem = updated[existingIndex]
+
+        const newQuantity =
+          mode === 'update' ? quantity : (Number(existingItem.quantity) || 0) + quantity
+
+        updated[existingIndex] = {
+          ...existingItem,
+          id: mode === 'update' && resolvedOriginalEntryId ? resolvedOriginalEntryId : existingItem.id,
+          product,
+          productKey: targetKey,
+          entryKey,
+          quantity: newQuantity,
+          milk
+        }
+        return updated
+      }
+
+      const baseId = resolvedOriginalEntryId || targetKey || product?.slug || product?.id || 'item'
+      const uniqueId = mode === 'update' && resolvedOriginalEntryId ? resolvedOriginalEntryId : `${baseId}-${Date.now()}`
+
+      return [
+        ...cleanedItems,
+        {
+          id: uniqueId,
+          product,
+          productKey: targetKey,
+          entryKey,
+          quantity,
+          milk
+        }
+      ]
+    })
+
+    const feedbackMessage = (() => {
+      if (!product?.name) return 'Added to cart'
+      return mode === 'update' ? `${product.name} updated` : `${product.name} added to cart`
+    })()
+
+    setCartFeedback(feedbackMessage)
+    setCartFlow(resetCartFlow())
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    setCurrentPath(window.location.pathname || '/')
+
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname || '/')
+    }
+
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!pendingScrollTarget) return undefined
+    if (currentPath !== '/') return undefined
+    if (typeof window === 'undefined') return undefined
+
+    const timeoutId = window.setTimeout(() => {
+      scrollToSection(pendingScrollTarget)
+      setPendingScrollTarget(null)
+    }, 60)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [pendingScrollTarget, currentPath])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -425,6 +773,53 @@ function App() {
     }
   }, [selectedProduct])
 
+  useEffect(() => {
+    if (!cartFlow.step) return undefined
+    if (typeof window === 'undefined') return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeCartFlow()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [cartFlow.step])
+
+  useEffect(() => {
+    if (!cartFeedback) return undefined
+    if (typeof window === 'undefined') return undefined
+
+    const timeoutId = window.setTimeout(() => {
+      setCartFeedback(null)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [cartFeedback])
+
+  useEffect(() => {
+    if (!cartModalOpen) return undefined
+    if (typeof window === 'undefined') return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeCartModal()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [cartModalOpen])
+
   const standaloneProduct = useMemo(() => {
     if (!standaloneProductId) return null
 
@@ -451,6 +846,392 @@ function App() {
   }, [menuSections, standaloneProductId])
 
   const isStandaloneView = Boolean(standaloneProductId)
+  const isMenuPage = currentPath === '/menu'
+  const cartItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+  const cartTotalValue = cartItems.reduce((sum, item) => {
+    const price = Number(item.product?.price)
+    if (!Number.isFinite(price)) return sum
+    return sum + price * item.quantity
+  }, 0)
+  const shouldShowProductModal = Boolean(selectedProduct && !isMenuPage)
+
+  const cartFlowModal = !isMenuPage || !cartFlow.step || !cartFlow.product
+    ? null
+    : (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 px-4"
+          onClick={closeCartFlow}
+        >
+          <div
+            className="relative w-full max-w-md"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cart-flow-title"
+          >
+            <button
+              type="button"
+              onClick={closeCartFlow}
+              className="absolute -top-10 right-0 text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent focus:ring-white"
+              aria-label="Close customization"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-6 h-6"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <div className="bg-white p-6 rounded shadow-2xl space-y-6">
+              {cartFlow.step === 'quantity' ? (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
+                      Select Quantity
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      How many {cartFlow.product?.name} would you like?
+                    </p>
+                    {!cartFlow.requiresMilk ? (
+                      <p className="text-xs text-gray-500">
+                        This item will be added without milk customization.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={decrementCartQuantity}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
+                      aria-label="Decrease quantity"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={cartFlow.quantity}
+                      onChange={(event) => setCartFlowQuantity(event.target.value)}
+                      className="w-20 text-center border border-gray-300 rounded py-2"
+                    />
+                    <button
+                      type="button"
+                      onClick={incrementCartQuantity}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeCartFlow}
+                      className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cartFlow.requiresMilk ? advanceToMilkSelection : finalizeCartItem}
+                      className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+                    >
+                      {cartFlow.requiresMilk ? 'Next' : cartFlow.mode === 'update' ? 'Save' : 'Add to cart'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
+                      Choose Your Milk
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Select your milk of choice for {cartFlow.product?.name}.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {MILK_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex items-center justify-between border rounded px-4 py-3 cursor-pointer transition-colors ${
+                          cartFlow.milk === option.value ? 'border-[#23314F] bg-[#23314F] bg-opacity-5' : 'border-gray-200 hover:border-[#23314F]'
+                        }`}
+                      >
+                        <span className="text-base text-gray-800">{option.label}</span>
+                        <input
+                          type="radio"
+                          name="milk-selection"
+                          value={option.value}
+                          checked={cartFlow.milk === option.value}
+                          onChange={() => selectMilkOption(option.value)}
+                          className="w-4 h-4 accent-[#23314F]"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={backToQuantityStep}
+                      className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={finalizeCartItem}
+                      className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+                    >
+                      {cartFlow.mode === 'update' ? 'Save' : 'Add to cart'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+
+  const cartSummaryModal = !isMenuPage || !cartModalOpen
+    ? null
+    : (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 px-4"
+          onClick={closeCartModal}
+        >
+          <div
+            className="relative w-full max-w-lg"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cart-summary-title"
+          >
+            <button
+              type="button"
+              onClick={closeCartModal}
+              className="absolute -top-10 right-0 text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent focus:ring-white"
+              aria-label="Close cart"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-6 h-6"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <div className="bg-white p-6 rounded shadow-2xl space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="cart-summary-title" className="text-xl font-semibold text-[#23314F]">
+                    Your Cart
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    {cartItemCount} {cartItemCount === 1 ? 'item' : 'items'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCartModal}
+                  className="text-sm text-[#23314F] hover:underline"
+                >
+                  Close
+                </button>
+              </div>
+              {cartItems.length === 0 ? (
+                <p className="text-sm text-gray-600">Your cart is empty. Start by adding a product.</p>
+              ) : (
+                <ul className="space-y-4 max-h-80 overflow-y-auto pr-1">
+                  {cartItems.map((item) => {
+                    const milkLabel = MILK_OPTIONS.find((option) => option.value === item.milk)?.label || item.milk
+                    const productName = item.product?.name || 'Selected Drink'
+                    const normalizedMilkLabel = milkLabel ? String(milkLabel).toLowerCase() : ''
+                    const displayName = milkLabel ? `${productName} with ${normalizedMilkLabel} milk` : productName
+                    const unitPrice = Number(item.product?.price)
+                    const hasUnitPrice = Number.isFinite(unitPrice)
+                    const lineTotal = hasUnitPrice ? (unitPrice * item.quantity).toFixed(2) : null
+                    const previewImage = item.product?.imageSrc || item.product?.imageUrl || '/images/logo.png'
+
+                    return (
+                      <li key={item.id} className="border border-gray-200 rounded p-3 space-y-3">
+                        <div className="flex items-center justify-between text-sm sm:text-base text-[#23314F] gap-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={previewImage}
+                              alt={productName}
+                              className="w-12 h-12 rounded object-cover"
+                              loading="lazy"
+                            />
+                            <p className="font-medium leading-snug text-left">{displayName}</p>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-700">x{item.quantity}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs sm:text-sm text-[#23314F]">
+                          <button
+                            type="button"
+                            onClick={() => handleEditCartItem(item)}
+                            className="font-semibold hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeCartItem(item.id)}
+                            className="font-semibold text-red-600 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>Price</span>
+                          <span className="flex items-center gap-1">
+                            <CurrencyIcon className="w-4 h-4" />
+                            {item.product?.displayPrice || item.product?.rawPrice || 'Ask'}
+                          </span>
+                        </div>
+                        {lineTotal ? (
+                          <div className="flex items-center justify-between text-sm text-gray-600">
+                            <span>Product total</span>
+                            <span className="flex items-center gap-1 font-semibold text-gray-700">
+                              <CurrencyIcon className="w-4 h-4" />
+                              {lineTotal}
+                            </span>
+                          </div>
+                        ) : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {cartItems.length > 0 ? (
+                <div className="border-t border-gray-200 pt-4 space-y-4">
+                  {Number.isFinite(cartTotalValue) && cartTotalValue > 0 ? (
+                    <div className="flex items-center justify-between text-base font-semibold text-gray-900">
+                      <span>Total</span>
+                      <span className="flex items-center gap-2">
+                        <CurrencyIcon className="w-5 h-5" />
+                        {cartTotalValue.toFixed(2)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {orderFlow.step === 'idle' ? (
+                    <button
+                      type="button"
+                      onClick={startOrderFlow}
+                      className="w-full px-4 py-3 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+                    >
+                      Order Now
+                    </button>
+                  ) : null}
+                  {orderFlow.step === 'type' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-600">Is this an in-house or a takeaway order?</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectOrderType('in-house')}
+                          className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+                        >
+                          In-house
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectOrderType('takeaway')}
+                          className="px-4 py-2 rounded border border-[#23314F] text-sm font-semibold text-[#23314F] hover:bg-[#23314F] hover:text-white"
+                        >
+                          Takeaway
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetOrderFlow}
+                        className="text-xs text-gray-500 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : null}
+                  {orderFlow.step === 'table' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-600">Choose a table number.</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ORDER_TABLE_NUMBERS.map((tableNumber) => {
+                          const isSelected = orderFlow.table === tableNumber
+                          return (
+                            <button
+                              key={tableNumber}
+                              type="button"
+                              onClick={() => handleSelectOrderTable(tableNumber)}
+                              className={`w-10 h-10 rounded text-sm font-semibold border transition ${
+                                isSelected
+                                  ? 'bg-[#23314F] text-white border-[#23314F]'
+                                  : 'border-gray-300 text-[#23314F] hover:bg-gray-100'
+                              }`}
+                              aria-pressed={isSelected}
+                            >
+                              {tableNumber}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOrderFlowBackToType}
+                        className="text-xs text-gray-500 hover:underline"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  ) : null}
+                  {orderFlow.step === 'ready' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-600">
+                        {orderFlow.type === 'in-house' && orderFlow.table
+                          ? `Table ${orderFlow.table} selected for in-house service.`
+                          : 'Takeaway order selected.'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {orderFlow.type === 'in-house' ? (
+                          <button
+                            type="button"
+                            onClick={handleChangeTableSelection}
+                            className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
+                          >
+                            Change table
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleOrderFlowBackToType}
+                          className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
+                        >
+                          Change order type
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOrderPayNow}
+                        className="w-full px-4 py-3 rounded bg-[#F2B705] text-[#23314F] text-sm font-semibold hover:opacity-90"
+                      >
+                        Pay Now
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )
 
   const buildProductLink = (product) => {
     const slug = createProductSlug(product?.slug || product?.name || product?.id)
@@ -474,6 +1255,9 @@ function App() {
       : (() => {
           const url = new URL(window.location.href)
           url.searchParams.delete('product')
+          if (!url.pathname) {
+            url.pathname = '/'
+          }
           return url.toString()
         })()
 
@@ -561,216 +1345,344 @@ function App() {
       data-auto-contrast-root
       style={{ backgroundColor: '#E3E3DD' }}
     >
-      {/* Navbar */}
       <header className="absolute top-0 left-0 w-full z-50">
         <div className="px-2 sm:px-10 pt-6">
-          <div className="bg-white bg-opacity-95 rounded shadow-2xl flex justify-between items-center py-1.5 sm:py-2 px-3 sm:px-5 w-full max-w-[96rem] mx-auto">
-            <button type="button" onClick={() => scrollTo('home')} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
-              <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
-            </button>
-            <nav
-              className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-[#23314F]"
-              data-ignore-auto-contrast
-            >
-              <button
-                onClick={() => scrollTo('menu')}
-                className="hover:opacity-80 text-[#23314F]"
-                data-ignore-auto-contrast
-              >
-                Menu
-              </button>
-              <button
-                onClick={() => scrollTo('vision')}
-                className="hover:opacity-80 text-[#23314F]"
-                data-ignore-auto-contrast
-              >
-                Vision
-              </button>
-              <button
-                onClick={() => scrollTo('contact')}
-                className="hover:opacity-80 text-[#23314F]"
-                data-ignore-auto-contrast
-              >
-                Contact
-              </button>
-              <button
-                onClick={() => scrollTo('about')}
-                className="hover:opacity-80 text-[#23314F]"
-                data-ignore-auto-contrast
-              >
-                About Us
-              </button>
-            </nav>
-            <button className="md:hidden text-[#23314F]" onClick={() => setMenuOpen(!menuOpen)}>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"
-                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round"
-                  d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+          <div className="bg-white bg-opacity-95 rounded shadow-2xl flex items-center justify-between py-1.5 sm:py-2 px-3 sm:px-5 w-full max-w-[96rem] mx-auto">
+            {isMenuPage ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleLogoClick}
+                  className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0"
+                >
+                  <img src="/images/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
+                </button>
+                <span className="flex-1 text-center text-base sm:text-lg font-semibold uppercase tracking-wide text-[#23314F]">
+                  Menu
+                </span>
+                <button
+                  type="button"
+                  onClick={openCartModal}
+                  className="text-sm sm:text-base font-semibold text-[#23314F] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F] ml-auto"
+                >
+                  View Cart{cartItemCount > 0 ? ` (${cartItemCount})` : ''}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={handleLogoClick} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
+                  <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
+                </button>
+                <nav
+                  className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-[#23314F]"
+                  data-ignore-auto-contrast
+                >
+                  <button
+                    onClick={handleNavigateMenuPage}
+                    className={`hover:opacity-80 text-[#23314F] ${isMenuPage ? 'underline decoration-2 decoration-[#23314F]' : ''}`}
+                    aria-current={isMenuPage ? 'page' : undefined}
+                    data-ignore-auto-contrast
+                  >
+                    Menu
+                  </button>
+                  <button
+                    onClick={() => handleSectionNavigation('vision')}
+                    className="hover:opacity-80 text-[#23314F]"
+                    data-ignore-auto-contrast
+                  >
+                    Vision
+                  </button>
+                  <button
+                    onClick={() => handleSectionNavigation('contact')}
+                    className="hover:opacity-80 text-[#23314F]"
+                    data-ignore-auto-contrast
+                  >
+                    Contact
+                  </button>
+                  <button
+                    onClick={() => handleSectionNavigation('about')}
+                    className="hover:opacity-80 text-[#23314F]"
+                    data-ignore-auto-contrast
+                  >
+                    About Us
+                  </button>
+                </nav>
+                <button className="md:hidden text-[#23314F]" onClick={() => setMenuOpen(!menuOpen)}>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"
+                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                      d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
         </div>
-        {menuOpen && (
+        {!isMenuPage && menuOpen && (
           <div className="md:hidden bg-[#23314F] shadow px-4 pb-4 space-y-3 text-center">
-            <button onClick={() => scrollTo('menu')} className="block w-full text-white">Menu</button>
-            <button onClick={() => scrollTo('vision')} className="block w-full text-white">Vision</button>
-            <button onClick={() => scrollTo('contact')} className="block w-full text-white">Contact</button>
-            <button onClick={() => scrollTo('about')} className="block w-full text-white">About Us</button>
+            <button
+              onClick={handleNavigateMenuPage}
+              className={`block w-full text-white ${isMenuPage ? 'font-semibold underline' : ''}`}
+              aria-current={isMenuPage ? 'page' : undefined}
+            >
+              Menu
+            </button>
+            <button onClick={() => handleSectionNavigation('vision')} className="block w-full text-white">Vision</button>
+            <button onClick={() => handleSectionNavigation('contact')} className="block w-full text-white">Contact</button>
+            <button onClick={() => handleSectionNavigation('about')} className="block w-full text-white">About Us</button>
           </div>
         )}
       </header>
 
-      <main className="pt-0 sm:pt-1">
+      {isMenuPage ? (
+        <main className="pt-32 sm:pt-36 pb-20 px-3 sm:px-8">
+          <div className="w-full max-w-[96rem] mx-auto space-y-10">
+            {cartFeedback ? (
+              <div className="text-sm sm:text-base text-green-800 bg-green-100 border border-green-200 rounded p-4 shadow">
+                {cartFeedback}
+              </div>
+            ) : null}
+            {menuStatus === 'loading' ? (
+              <p className="text-center text-base sm:text-lg text-gray-600">Loading the latest menu…</p>
+            ) : null}
+            {menuStatus === 'error' ? (
+              <div className="text-center text-base sm:text-lg text-red-700 bg-red-100 border border-red-200 rounded p-4">
+                <p>We couldn't load the menu right now.</p>
+                {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
+              </div>
+            ) : null}
+            {menuStatus === 'success' && menuSections.length === 0 ? (
+              <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
+            ) : null}
+            {menuStatus === 'success' && menuSections.length > 0
+              ? menuSections.map((section) => {
+                  if (!section || !Array.isArray(section.products) || section.products.length === 0) {
+                    return null
+                  }
+                  return (
+                    <section key={section.category} className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <h3 className="text-xl sm:text-2xl font-bold text-[#23314F]">{section.category}</h3>
+                        <span className="text-xs sm:text-sm text-gray-500">
+                          {section.products.length} {section.products.length === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
+                        {section.products.map((item) => {
+                          const productDetails = mapProductToDetails(item)
+                          const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
+                          const productKey = productDetails.slug || item.id || item.name
+                          const isAvailable = isInStock
 
-        {/* Hero */}
-        <section
-          id="home"
-          className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-24 pb-44"
-        >
-          <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-12 sm:py-20 overflow-auto">
-            <div
-              className="bg-white p-4 sm:p-6 rounded shadow-2xl"
-              style={{ width: '96rem', minWidth: '96rem', maxWidth: '96rem', height: '54rem', minHeight: '54rem', maxHeight: '54rem' }}
-            >
-              <img
-                src="/images/hero/hero.jpg"
-                alt="Guests enjoying the atmosphere at DopaBeans Café"
-                className="w-full h-full object-cover rounded"
-              />
-            </div>
-          </div>
-          <div className="absolute inset-x-0 px-4 z-20" style={{ top: '40%' }}>
-            <div className="bg-white bg-opacity-90 p-4 sm:p-6 rounded shadow-xl max-w-3xl mx-auto">
-              <h2 className="text-2xl sm:text-3xl font-semibold mb-2">Welcome to DopaBeans</h2>
-              <p className="text-3xl sm:text-5xl font-extrabold text-gray-800">Dopamine By Coffee Bean</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Menu */}
-        <section id="menu" className="-mt-32 sm:-mt-52 py-20 px-2 sm:px-10">
-          <div className="w-full max-w-[96rem] mx-auto text-left">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-10 text-center">Our Menu</h2>
-            <div className="space-y-16 w-full">
-              {menuStatus === 'loading' && (
-                <p className="text-center text-base sm:text-lg text-gray-600">Loading the latest menu…</p>
-              )}
-
-              {menuStatus === 'error' && (
-                <div className="text-center text-base sm:text-lg text-red-700 bg-red-100 border border-red-200 rounded p-4">
-                  <p>We couldn't load the menu right now.</p>
-                  {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
-                </div>
-              )}
-
-              {menuStatus === 'success' && menuSections.length === 0 && (
-                <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
-              )}
-
-              {menuSections.map((section) => (
-                <div key={section.category}>
-                  <h3 className="text-xl sm:text-2xl font-bold mb-4">{section.category}</h3>
-                  <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
-                    {section.products.map((item) => {
-                      const productDetails = mapProductToDetails(item)
-                      const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
-
-                      return (
-                        <li
-                          key={item.id}
-                          className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleProductSelect(productDetails)}
-                            className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
-                            aria-label={`View details for ${productDetails.name}`}
-                          >
-                            <img
-                              src={imageSrc}
-                              alt={productDetails.name}
-                              className="rounded w-full object-cover aspect-square max-w-[200px]"
-                              loading="lazy"
-                            />
-                          </button>
-                          <div className="text-sm sm:text-base">
-                            <a
-                              href={buildProductLink(productDetails)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium block text-[#23314F] hover:underline"
+                          return (
+                            <div
+                              key={productKey}
+                              className="bg-gray-100 p-4 rounded shadow text-left flex flex-col h-full"
                             >
-                              {productDetails.name}
-                            </a>
-                            <span className="flex items-center gap-1">
-                              <CurrencyIcon className="w-4 h-4" />
-                              {displayPrice}
-                            </span>
-                            {!isInStock && normalizedAvailability && (
-                              <span className="mt-1 inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
-                                {productDetails.availability}
-                              </span>
-                            )}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-
+                              <button
+                                type="button"
+                                onClick={() => startAddToCart(productDetails)}
+                                disabled={!isAvailable}
+                                className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F] disabled:opacity-60 disabled:cursor-not-allowed"
+                                aria-label={`Select ${productDetails.name}`}
+                              >
+                                <img
+                                  src={imageSrc}
+                                  alt={productDetails.name}
+                                  className="rounded w-full object-cover aspect-square"
+                                  loading="lazy"
+                                />
+                              </button>
+                              <div className="text-sm sm:text-base flex-1 space-y-1">
+                                <a
+                                  href={buildProductLink(productDetails)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium block text-[#23314F] hover:underline"
+                                >
+                                  {productDetails.name}
+                                </a>
+                                <span className="flex items-center gap-1">
+                                  <CurrencyIcon className="w-4 h-4" />
+                                  {displayPrice}
+                                </span>
+                                {!isAvailable && normalizedAvailability ? (
+                                  <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
+                                    {productDetails.availability}
+                                  </span>
+                                ) : null}
+                                {productDetails.description ? (
+                                  <p className="text-xs text-gray-600 leading-relaxed">
+                                    {productDetails.description}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="pt-3 mt-auto flex justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => startAddToCart(productDetails)}
+                                  disabled={!isAvailable}
+                                  className="w-full px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isAvailable ? 'Add to cart' : 'Out of stock'}
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  )
+                })
+              : null}
+          </div>
+        </main>
+      ) : (
+        <main className="pt-0 sm:pt-1">
+          <section
+            id="home"
+            className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-24 pb-44"
+          >
+            <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-12 sm:py-20 overflow-auto">
+              <div
+                className="bg-white p-4 sm:p-6 rounded shadow-2xl"
+                style={{ width: '96rem', minWidth: '96rem', maxWidth: '96rem', height: '54rem', minHeight: '54rem', maxHeight: '54rem' }}
+              >
+                <img
+                  src="/images/hero/hero.jpg"
+                  alt="Guests enjoying the atmosphere at DopaBeans Café"
+                  className="w-full h-full object-cover rounded"
+                />
+              </div>
             </div>
-          </div>
-        </section>
+            <div className="absolute inset-x-0 px-4 z-20" style={{ top: '40%' }}>
+              <div className="bg-white bg-opacity-90 p-4 sm:p-6 rounded shadow-xl max-w-3xl mx-auto">
+                <h2 className="text-2xl sm:text-3xl font-semibold mb-2">Welcome to DopaBeans</h2>
+                <p className="text-3xl sm:text-5xl font-extrabold text-gray-800">Dopamine By Coffee Bean</p>
+              </div>
+            </div>
+          </section>
 
-        {/* Vision */}
-        <section id="vision" className="py-20 px-4 sm:px-8 text-center">
-          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-bold">Our Vision</h2>
-            <p className="text-gray-700">
-              More than a café, we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
+          <section id="menu" className="-mt-32 sm:-mt-52 py-20 px-2 sm:px-10">
+            <div className="w-full max-w-[96rem] mx-auto text-left">
+              <h2 className="text-2xl sm:text-3xl font-bold mb-10 text-center">Our Products</h2>
+              <div className="space-y-16 w-full">
+                {menuStatus === 'loading' && (
+                  <p className="text-center text-base sm:text-lg text-gray-600">Loading the latest menu…</p>
+                )}
+
+                {menuStatus === 'error' && (
+                  <div className="text-center text-base sm:text-lg text-red-700 bg-red-100 border border-red-200 rounded p-4">
+                    <p>We couldn't load the menu right now.</p>
+                    {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
+                  </div>
+                )}
+
+                {menuStatus === 'success' && menuSections.length === 0 && (
+                  <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
+                )}
+
+                {menuSections.map((section) => (
+                  <div key={section.category}>
+                    <h3 className="text-xl sm:text-2xl font-bold mb-4">{section.category}</h3>
+                    <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
+                      {section.products.map((item) => {
+                        const productDetails = mapProductToDetails(item)
+                        const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
+
+                        return (
+                          <li
+                            key={item.id}
+                            className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleProductSelect(productDetails)}
+                              className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
+                              aria-label={`View details for ${productDetails.name}`}
+                            >
+                              <img
+                                src={imageSrc}
+                                alt={productDetails.name}
+                                className="rounded w-full object-cover aspect-square max-w-[200px]"
+                                loading="lazy"
+                              />
+                            </button>
+                            <div className="text-sm sm:text-base">
+                              <a
+                                href={buildProductLink(productDetails)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium block text-[#23314F] hover:underline"
+                              >
+                                {productDetails.name}
+                              </a>
+                              <span className="flex items-center gap-1">
+                                <CurrencyIcon className="w-4 h-4" />
+                                {displayPrice}
+                              </span>
+                              {!isInStock && normalizedAvailability && (
+                                <span className="mt-1 inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
+                                  {productDetails.availability}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
+
+              </div>
+            </div>
+          </section>
+
+          <section id="vision" className="py-20 px-4 sm:px-8 text-center">
+            <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+              <h2 className="text-2xl sm:text-3xl font-bold">Our Vision</h2>
+              <p className="text-gray-700">
+                More than a café, we are a community space for authentic moments, made possible through quality, care, and the joy of coffee.
+              </p>
+            </div>
+          </section>
+
+          <section id="about" className="py-20 px-4 sm:px-8 text-center">
+            <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+              <h2 className="text-2xl sm:text-3xl font-bold">About Us</h2>
+              <p className="text-base sm:text-lg text-gray-700">
+                More than just a café, DopaBeans is a gathering place where genuine moments come to life—rooted in quality craftsmanship, heartfelt care, and the simple joy that only exceptional coffee can bring.
+              </p>
+            </div>
+          </section>
+
+          <section id="contact" className="py-20 px-4 sm:px-8 text-center">
+            <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
+              <h2 className="text-2xl sm:text-3xl font-bold">Contact Us</h2>
+              <p className="text-base sm:text-lg text-gray-700">info@dopabeansuae.com</p>
+              <p className="text-base sm:text-lg text-gray-700">Instagram: @dopabeansuae</p>
+            </div>
+          </section>
+
+          <footer className="bg-white text-black py-8 text-center text-sm space-y-2">
+            <p>© {new Date().getFullYear()} DopaBeans. All rights reserved.</p>
+            <p>
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:opacity-80"
+                data-ignore-auto-contrast
+                style={{ color: '#23314F' }}
+              >
+                Privacy Policy
+              </a>
             </p>
-          </div>
-        </section>
+          </footer>
+        </main>
+      )}
 
-        {/* About Us */}
-        <section id="about" className="py-20 px-4 sm:px-8 text-center">
-          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-bold">About Us</h2>
-            <p className="text-base sm:text-lg text-gray-700">
-              More than just a café, DopaBeans is a gathering place where genuine moments come to life—rooted in quality craftsmanship, heartfelt care, and the simple joy that only exceptional coffee can bring.
-            </p>
-          </div>
-        </section>
-
-        {/* Contact */}
-        <section id="contact" className="py-20 px-4 sm:px-8 text-center">
-          <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-bold">Contact Us</h2>
-            <p className="text-base sm:text-lg text-gray-700">info@dopabeansuae.com</p>
-            <p className="text-base sm:text-lg text-gray-700">Instagram: @dopabeansuae</p>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="bg-white text-black py-8 text-center text-sm space-y-2">
-          <p>© {new Date().getFullYear()} DopaBeans. All rights reserved.</p>
-          <p>
-            <a
-              href="/privacy.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:opacity-80"
-              data-ignore-auto-contrast
-              style={{ color: '#23314F' }}
-            >
-              Privacy Policy
-            </a>
-          </p>
-        </footer>
-
-      </main>
-      {selectedProduct && (
+      {shouldShowProductModal ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 px-4"
           onClick={closeProductModal}
@@ -781,7 +1693,7 @@ function App() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="product-modal-title"
-            aria-describedby={selectedProduct.description ? 'product-modal-description' : undefined}
+            aria-describedby={selectedProduct?.description ? 'product-modal-description' : undefined}
           >
             <button
               type="button"
@@ -803,27 +1715,27 @@ function App() {
             <div className="bg-gray-100 p-4 rounded shadow text-left">
               <div className="overflow-hidden rounded">
                 <img
-                  src={selectedProduct.imageSrc}
-                  alt={selectedProduct.name}
+                  src={selectedProduct?.imageSrc}
+                  alt={selectedProduct?.name}
                   className="w-full object-cover aspect-square"
                 />
               </div>
               <div className="mt-4 space-y-2">
                 <h3 id="product-modal-title" className="text-xl sm:text-2xl font-semibold text-[#23314F]">
-                  {selectedProduct.name}
+                  {selectedProduct?.name}
                 </h3>
                 <div className="flex items-center gap-2 text-lg font-medium text-gray-800">
                   <CurrencyIcon className="w-5 h-5" />
-                  {selectedProduct.displayPrice}
+                  {selectedProduct?.displayPrice}
                 </div>
-                {selectedProduct.description ? (
+                {selectedProduct?.description ? (
                   <p id="product-modal-description" className="text-sm sm:text-base text-gray-700 leading-relaxed">
                     {selectedProduct.description}
                   </p>
                 ) : (
                   <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
                 )}
-                {selectedProduct.availability && selectedProduct.availability.toLowerCase() !== 'in stock' && (
+                {selectedProduct?.availability && selectedProduct.availability.toLowerCase() !== 'in stock' && (
                   <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                     {selectedProduct.availability}
                   </span>
@@ -832,7 +1744,10 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {cartSummaryModal}
+      {cartFlowModal}
     </div>
   )
 }
