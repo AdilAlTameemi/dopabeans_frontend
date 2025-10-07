@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "rewrites": [
     {
       "source": "/menu",
@@ -9,14 +10,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "header",
-          "key": "accept",
-          "value": "text/html"
-        }
-      ],
+      "source": "/((?!.*\\.).*)",
       "destination": "/index.html"
     }
   ]
