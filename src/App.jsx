@@ -38,10 +38,10 @@ const PRODUCT_IMAGE_MAP = {
 }
 
 const MILK_OPTIONS = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'coconut', label: 'Coconut' },
-  { value: 'almond', label: 'Almond' },
-  { value: 'oat', label: 'Oat' },
+  { value: 'normal', label: 'Normal Milk' },
+  { value: 'coconut', label: 'Coconut Milk' },
+  { value: 'almond', label: 'Almond Milk' },
+  { value: 'oat', label: 'Oat Milk' },
   { value: 'none', label: 'No Milk' }
 ]
 
@@ -116,6 +116,79 @@ const createProductSlug = (rawValue) => {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
 }
+
+const CART_STORAGE_KEY = 'dopabeans-cart-v1'
+
+const getProductKey = (product) => {
+  if (!product) return ''
+  if (product.id) return String(product.id).toLowerCase()
+  if (product.slug) return String(product.slug).toLowerCase()
+  if (product.name) return createProductSlug(product.name)
+  return ''
+}
+
+const getProductSlugValue = (product) => createProductSlug(product?.slug || product?.name || product?.id)
+
+const isProductCustomizable = (product) => {
+  const slug = getProductSlugValue(product)
+  const key = getProductKey(product)
+  return !(NON_CUSTOMIZABLE_PRODUCTS.has(slug) || NON_CUSTOMIZABLE_PRODUCTS.has(key))
+}
+
+const sanitizeStoredCartItem = (entry) => {
+  if (!entry || typeof entry !== 'object') return null
+  const product = entry.product && typeof entry.product === 'object' ? entry.product : null
+  if (!product) return null
+
+  const quantityValue = Number(entry.quantity)
+  const quantity = Number.isFinite(quantityValue) && quantityValue > 0 ? Math.min(20, Math.floor(quantityValue)) : 1
+  const milk = typeof entry.milk === 'string' ? entry.milk : entry.milk === null ? null : null
+  const productKey =
+    entry.productKey ||
+    (typeof entry.entryKey === 'string' ? entry.entryKey.split('::')[0] : '') ||
+    getProductKey(product)
+
+  if (!productKey) return null
+
+  const entryKey = entry.entryKey || (milk ? `${productKey}::${milk}` : productKey)
+  const idSource = entry.id || entry.entryKey || entry.productKey || productKey
+  const id =
+    typeof idSource === 'string' && idSource.length > 0
+      ? idSource
+      : `${productKey}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  return {
+    id,
+    product,
+    productKey,
+    entryKey,
+    quantity,
+    milk
+  }
+}
+
+const loadStoredCartItems = () => {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(sanitizeStoredCartItem).filter(Boolean)
+  } catch (error) {
+    return []
+  }
+}
+
+const serializeCartItemsForStorage = (items) =>
+  items.map((item) => ({
+    id: item.id,
+    product: item.product,
+    productKey: item.productKey,
+    entryKey: item.entryKey,
+    quantity: item.quantity,
+    milk: item.milk ?? null
+  }))
 
 const mapProductToDetails = (item) => {
   const normalizedAvailability = (item.availability || '').toLowerCase()
@@ -316,7 +389,7 @@ function App() {
     return window.location.pathname || '/'
   })
   const [pendingScrollTarget, setPendingScrollTarget] = useState(null)
-  const [cartItems, setCartItems] = useState([])
+  const [cartItems, setCartItems] = useState(() => loadStoredCartItems())
   const [cartFlow, setCartFlow] = useState({
     step: null,
     product: null,
@@ -336,6 +409,22 @@ function App() {
   const [menuError, setMenuError] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [standaloneProductId, setStandaloneProductId] = useState(null)
+  const [expandedProductKey, setExpandedProductKey] = useState(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    try {
+      if (!cartItems || cartItems.length === 0) {
+        window.localStorage.removeItem(CART_STORAGE_KEY)
+      } else {
+        const payload = JSON.stringify(serializeCartItemsForStorage(cartItems))
+        window.localStorage.setItem(CART_STORAGE_KEY, payload)
+      }
+    } catch (error) {
+      // Ignore storage errors to avoid blocking the UI.
+    }
+    return undefined
+  }, [cartItems])
 
   const resetOrderFlow = () => {
     setOrderFlow(createInitialOrderFlowState())
@@ -456,20 +545,15 @@ function App() {
     closeCartModal()
   }
 
-  const getProductKey = (product) => {
-    if (!product) return ''
-    if (product.id) return String(product.id).toLowerCase()
-    if (product.slug) return String(product.slug).toLowerCase()
-    if (product.name) return createProductSlug(product.name)
-    return ''
+  const handleExpandProductCard = (product) => {
+    const key = getProductKey(product)
+    if (!key) return
+    setExpandedProductKey((prev) => (prev === key ? null : key))
+    setSelectedProduct(null)
   }
 
-  const getProductSlugValue = (product) => createProductSlug(product?.slug || product?.name || product?.id)
-
-  const isProductCustomizable = (product) => {
-    const slug = getProductSlugValue(product)
-    const key = getProductKey(product)
-    return !(NON_CUSTOMIZABLE_PRODUCTS.has(slug) || NON_CUSTOMIZABLE_PRODUCTS.has(key))
+  const closeExpandedProductCard = () => {
+    setExpandedProductKey(null)
   }
 
   const startAddToCart = (product, options = {}) => {
@@ -890,6 +974,52 @@ function App() {
 
   const isStandaloneView = Boolean(standaloneProductId)
   const isMenuPage = currentPath === '/menu'
+  useEffect(() => {
+    if (!isMenuPage) {
+      closeExpandedProductCard()
+    }
+  }, [isMenuPage])
+
+  useEffect(() => {
+    if (!expandedProductKey) return undefined
+    if (typeof window === 'undefined') return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeExpandedProductCard()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    let originalOverflow = ''
+    if (typeof document !== 'undefined') {
+      originalOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = originalOverflow
+      }
+    }
+  }, [expandedProductKey])
+
+  const expandedProductDetails = useMemo(() => {
+    if (!expandedProductKey) return null
+    for (const section of menuSections) {
+      if (!section || !Array.isArray(section.products)) continue
+      for (const product of section.products) {
+        const details = mapProductToDetails(product)
+        if (getProductKey(details) === expandedProductKey) {
+          return details
+        }
+      }
+    }
+    return null
+  }, [expandedProductKey, menuSections])
+
   const cartItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
   const cartTotalValue = cartItems.reduce((sum, item) => {
     const price = Number(item.product?.price)
@@ -1076,10 +1206,10 @@ function App() {
               ) : (
                 <ul className="space-y-4 max-h-80 overflow-y-auto pr-1">
                   {cartItems.map((item) => {
-                    const milkLabel = MILK_OPTIONS.find((option) => option.value === item.milk)?.label || item.milk
+                    const milkOption = MILK_OPTIONS.find((option) => option.value === item.milk)
+                    const milkLabel = milkOption?.label || null
                     const productName = item.product?.name || 'Selected Drink'
-                    const normalizedMilkLabel = milkLabel ? String(milkLabel).toLowerCase() : ''
-                    const displayName = milkLabel ? `${productName} with ${normalizedMilkLabel} milk` : productName
+                    const displayName = milkLabel ? `${productName} with ${milkLabel}` : productName
                     const unitPrice = Number(item.product?.price)
                     const hasUnitPrice = Number.isFinite(unitPrice)
                     const lineTotal = hasUnitPrice ? (unitPrice * item.quantity).toFixed(2) : null
@@ -1491,24 +1621,25 @@ function App() {
                           {section.products.length} {section.products.length === 1 ? 'item' : 'items'}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-5 lg:gap-6">
                         {section.products.map((item) => {
                           const productDetails = mapProductToDetails(item)
                           const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
-                          const productKey = productDetails.slug || item.id || item.name
+                          const productKey = getProductKey(productDetails) || productDetails.slug || item.id || item.name
                           const isAvailable = isInStock
 
                           return (
                             <div
                               key={productKey}
-                              className="bg-gray-100 p-4 rounded shadow text-left flex flex-col h-full"
+                              className={`col-span-1 bg-gray-100 p-4 rounded shadow text-left flex flex-col h-full transition-shadow hover:shadow-lg ${
+                                expandedProductKey === productKey ? 'ring-2 ring-[#23314F]' : ''
+                              }`}
                             >
                               <button
                                 type="button"
-                                onClick={() => startAddToCart(productDetails)}
-                                disabled={!isAvailable}
-                                className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F] disabled:opacity-60 disabled:cursor-not-allowed"
-                                aria-label={`Select ${productDetails.name}`}
+                                onClick={() => handleExpandProductCard(productDetails)}
+                                className="mb-2 block w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
+                                aria-label={`View details for ${productDetails.name}`}
                               >
                                 <img
                                   src={imageSrc}
@@ -1535,13 +1666,8 @@ function App() {
                                     {productDetails.availability}
                                   </span>
                                 ) : null}
-                                {productDetails.description ? (
-                                  <p className="text-xs text-gray-600 leading-relaxed">
-                                    {productDetails.description}
-                                  </p>
-                                ) : null}
                               </div>
-                              <div className="pt-3 mt-auto flex justify-center">
+                              <div className="pt-3 mt-auto">
                                 <button
                                   type="button"
                                   onClick={() => startAddToCart(productDetails)}
@@ -1560,6 +1686,91 @@ function App() {
                 })
               : null}
           </div>
+          {isMenuPage && cartItems.length > 0 ? (
+            <button
+              type="button"
+              onClick={openCartModal}
+              className="fixed bottom-6 right-4 z-40 px-4 py-3 rounded-full bg-[#23314F] text-white text-sm sm:text-base font-semibold shadow-lg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
+            >
+              View Cart
+            </button>
+          ) : null}
+          {expandedProductDetails ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4"
+              onClick={closeExpandedProductCard}
+            >
+              <div
+                className="relative w-full max-w-md bg-gray-100 rounded shadow-2xl p-6 space-y-4"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="expanded-product-title"
+                aria-describedby={
+                  expandedProductDetails.description ? 'expanded-product-description' : undefined
+                }
+              >
+                <button
+                  type="button"
+                  onClick={closeExpandedProductCard}
+                  className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-100 focus:ring-[#23314F]"
+                  aria-label="Close product details"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="w-6 h-6"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+                <div className="overflow-hidden rounded">
+                  <img
+                    src={expandedProductDetails.imageSrc}
+                    alt={expandedProductDetails.name}
+                    className="w-full object-cover aspect-square"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <h3 id="expanded-product-title" className="text-xl sm:text-2xl font-semibold text-[#23314F]">
+                    {expandedProductDetails.name}
+                  </h3>
+                  <div className="flex items-center gap-2 text-lg font-medium text-gray-800">
+                    <CurrencyIcon className="w-5 h-5" />
+                    {expandedProductDetails.displayPrice}
+                  </div>
+                  {expandedProductDetails.description ? (
+                    <p id="expanded-product-description" className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                      {expandedProductDetails.description}
+                    </p>
+                  ) : (
+                    <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
+                  )}
+                  {!expandedProductDetails.isInStock && expandedProductDetails.normalizedAvailability ? (
+                    <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
+                      {expandedProductDetails.availability}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      startAddToCart(expandedProductDetails)
+                      closeExpandedProductCard()
+                    }}
+                    disabled={!expandedProductDetails.isInStock}
+                    className="w-full px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {expandedProductDetails.isInStock ? 'Add to cart' : 'Out of stock'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </main>
       ) : (
         <main className="pt-0 sm:pt-1">
