@@ -37,10 +37,40 @@ const PRODUCT_IMAGE_MAP = {
   product_030: '/images/products/cold-brew.jpg'
 }
 
-const BACKEND_BASE_URL =
-  typeof import.meta !== 'undefined' && import.meta?.env?.VITE_BACKEND_URL
-    ? String(import.meta.env.VITE_BACKEND_URL).replace(/\/+$/, '')
-    : ''
+const DEFAULT_PROD_BACKEND_URL = 'https://dopabeans-backend.onrender.com'
+const DEFAULT_LOCAL_BACKEND_URL = 'http://127.0.0.1:8000'
+
+const sanitizeBaseUrl = (value) => {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (trimmed === '/' || trimmed.toLowerCase() === 'relative' || trimmed.toLowerCase() === 'same-origin') {
+    return ''
+  }
+  return trimmed.replace(/\/+$/, '')
+}
+
+const resolveBackendBaseUrl = () => {
+  const envValue =
+    typeof import.meta !== 'undefined' && import.meta?.env?.VITE_BACKEND_URL
+      ? sanitizeBaseUrl(String(import.meta.env.VITE_BACKEND_URL))
+      : ''
+
+  if (envValue) {
+    return envValue
+  }
+
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.local')) {
+      return DEFAULT_LOCAL_BACKEND_URL
+    }
+  }
+
+  return DEFAULT_PROD_BACKEND_URL
+}
+
+const BACKEND_BASE_URL = resolveBackendBaseUrl()
 
 const buildBackendUrl = (path) => {
   if (typeof path !== 'string' || path.length === 0) return ''
@@ -635,20 +665,46 @@ function App() {
         body: JSON.stringify(payload)
       })
 
+      const responseClone = response.clone()
+
       if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`)
+        let errorMessage = `Request failed with status ${response.status}`
+        try {
+          const errorBody = await responseClone.json()
+          if (errorBody && typeof errorBody === 'object') {
+            const detailMessage =
+              errorBody.detail ||
+              errorBody.message ||
+              (Array.isArray(errorBody) && errorBody.length > 0 ? errorBody[0] : null)
+            if (detailMessage) {
+              errorMessage = `${errorMessage}: ${detailMessage}`
+            }
+          }
+        } catch {
+          try {
+            const text = await responseClone.text()
+            if (text) {
+              errorMessage = `${errorMessage}: ${text}`
+            }
+          } catch {
+            // Ignore parsing failures; we'll fall back to the default message.
+          }
+        }
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
       if (!data?.redirect_url) {
-        throw new Error('Missing redirect_url in response')
+        throw new Error('Payment provider did not return a redirect link.')
       }
 
       closeCartModal()
       window.location.assign(data.redirect_url)
     } catch (error) {
       console.error('Failed to create payment session', error)
-      setCartFeedback('Could not start the payment. Please try again.')
+      const fallbackMessage = 'Could not start the payment.'
+      const detailMessage = error instanceof Error && error.message ? ` ${error.message}` : ' Please try again.'
+      setCartFeedback(`${fallbackMessage}${detailMessage}`)
     } finally {
       setIsProcessingPayment(false)
     }
