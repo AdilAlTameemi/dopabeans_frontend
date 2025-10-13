@@ -37,6 +37,20 @@ const PRODUCT_IMAGE_MAP = {
   product_030: '/images/products/cold-brew.jpg'
 }
 
+const BACKEND_BASE_URL =
+  typeof import.meta !== 'undefined' && import.meta?.env?.VITE_BACKEND_URL
+    ? String(import.meta.env.VITE_BACKEND_URL).replace(/\/+$/, '')
+    : ''
+
+const buildBackendUrl = (path) => {
+  if (typeof path !== 'string' || path.length === 0) return ''
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  if (!BACKEND_BASE_URL) {
+    return normalizedPath
+  }
+  return `${BACKEND_BASE_URL}${normalizedPath}`
+}
+
 const MILK_OPTIONS = [
   { value: 'normal', label: 'Normal Milk' },
   { value: 'coconut', label: 'Coconut Milk' },
@@ -401,6 +415,7 @@ function App() {
     originalEntryId: null
   })
   const [cartFeedback, setCartFeedback] = useState(null)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [orderFlow, setOrderFlow] = useState(createInitialOrderFlowState)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -410,6 +425,17 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [standaloneProductId, setStandaloneProductId] = useState(null)
   const [expandedProductKey, setExpandedProductKey] = useState(null)
+  const cartItemCount = useMemo(
+    () => cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0),
+    [cartItems]
+  )
+  const cartTotalValue = useMemo(() => {
+    return cartItems.reduce((sum, item) => {
+      const price = Number(item.product?.price)
+      if (!Number.isFinite(price)) return sum
+      return sum + price * item.quantity
+    }, 0)
+  }, [cartItems])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -535,14 +561,97 @@ function App() {
     setOrderFlow({ step: 'table', type: 'in-house', table: orderFlow.table })
   }
 
-  const handleOrderPayNow = () => {
-    const feedbackMessage =
-      orderFlow.type === 'in-house' && orderFlow.table
-        ? `Table ${orderFlow.table} order is ready for payment.`
-        : 'Takeaway order is ready for payment.'
+  const handleOrderPayNow = async () => {
+    if (isProcessingPayment) return
+    if (cartItems.length === 0) return
 
-    setCartFeedback(feedbackMessage)
-    closeCartModal()
+    if (!orderFlow.type) {
+      setCartFeedback('Please choose an order type before paying.')
+      return
+    }
+
+    if (orderFlow.type === 'in-house' && !orderFlow.table) {
+      setCartFeedback('Please select a table number before paying.')
+      return
+    }
+
+    if (!Number.isFinite(cartTotalValue) || cartTotalValue <= 0) {
+      setCartFeedback('Unable to calculate your total. Please review the cart and try again.')
+      return
+    }
+
+    const itemsMissingPrice = cartItems.some((item) => !Number.isFinite(Number(item.product?.price)))
+    if (itemsMissingPrice) {
+      setCartFeedback('Some items are missing prices. Please update them before paying online.')
+      return
+    }
+
+    const endpoint = buildBackendUrl('/api/create-payment-session')
+    if (!endpoint) {
+      setCartFeedback('Payment service is unavailable. Please try again later.')
+      return
+    }
+
+    const milkLabelLookup = MILK_OPTIONS.reduce((accumulator, option) => {
+      accumulator[option.value] = option.label
+      return accumulator
+    }, {})
+
+    let productSummary = cartItems
+      .map((item) => {
+        const name = item.product?.name || 'Drink'
+        const milkLabel = item.milk ? milkLabelLookup[item.milk] : null
+        const milkSuffix = milkLabel ? ` (${milkLabel})` : ''
+        return `${name} x${item.quantity}${milkSuffix}`
+      })
+      .join('; ')
+
+    if (orderFlow.type === 'in-house' && orderFlow.table) {
+      productSummary = `${productSummary}; Table ${orderFlow.table}`
+    }
+
+    const uniqueMilks = new Set(cartItems.map((item) => item.milk).filter(Boolean))
+    let milkType = 'none'
+    if (uniqueMilks.size === 1) {
+      const [singleMilk] = Array.from(uniqueMilks)
+      milkType = milkLabelLookup[singleMilk] || singleMilk
+    } else if (uniqueMilks.size > 1) {
+      milkType = 'mixed'
+    }
+
+    const payload = {
+      product: productSummary,
+      milk_type: milkType,
+      order_type: orderFlow.type === 'in-house' ? 'inhouse' : orderFlow.type,
+      quantity: cartItemCount,
+      amount: Number(cartTotalValue.toFixed(2))
+    }
+
+    try {
+      setIsProcessingPayment(true)
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      if (!data?.redirect_url) {
+        throw new Error('Missing redirect_url in response')
+      }
+
+      closeCartModal()
+      window.location.assign(data.redirect_url)
+    } catch (error) {
+      console.error('Failed to create payment session', error)
+      setCartFeedback('Could not start the payment. Please try again.')
+    } finally {
+      setIsProcessingPayment(false)
+    }
   }
 
   const handleExpandProductCard = (product) => {
@@ -1020,12 +1129,6 @@ function App() {
     return null
   }, [expandedProductKey, menuSections])
 
-  const cartItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
-  const cartTotalValue = cartItems.reduce((sum, item) => {
-    const price = Number(item.product?.price)
-    if (!Number.isFinite(price)) return sum
-    return sum + price * item.quantity
-  }, 0)
   const shouldShowProductModal = Boolean(selectedProduct && !isMenuPage)
 
   const cartFlowModal = !isMenuPage || !cartFlow.step || !cartFlow.product
@@ -1374,9 +1477,12 @@ function App() {
                       <button
                         type="button"
                         onClick={handleOrderPayNow}
-                        className="w-full px-4 py-3 rounded bg-[#F2B705] text-[#23314F] text-sm font-semibold hover:opacity-90"
+                        disabled={isProcessingPayment}
+                        className={`w-full px-4 py-3 rounded bg-[#F2B705] text-[#23314F] text-sm font-semibold hover:opacity-90 ${
+                          isProcessingPayment ? 'opacity-70 cursor-not-allowed' : ''
+                        }`}
                       >
-                        Pay Now
+                        {isProcessingPayment ? 'Processing...' : 'Pay Now'}
                       </button>
                     </div>
                   ) : null}
