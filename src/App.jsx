@@ -2429,11 +2429,6 @@ function App() {
                 Thanks! Your payment is confirmed. Tap below so Mira can share your order number in WhatsApp.
               </p>
             </div>
-            <div className="bg-white border border-green-200 shadow-sm rounded-lg px-4 py-3">
-              <p className="text-sm sm:text-base text-green-800">
-                We’ll let Mira know you’re ready—just tap the button and she’ll reply with your order number instantly.
-              </p>
-            </div>
             <div className="flex flex-col items-center gap-4">
               <a
                 href={paymentSuccessWhatsappUrl}
