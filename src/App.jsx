@@ -1,40 +1,94 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 const MENU_SHEET_CSV_URL =
   'https://docs.google.com/spreadsheets/d/10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8/export?format=csv'
 const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v1'
 const MENU_CACHE_TTL_MS = 1000 * 60 * 30
+const DEFAULT_PRODUCT_IMAGE = '/images/products/coming-soon.jpg'
 const PRODUCT_IMAGE_MAP = {
-  product_001: '/images/products/espresso.jpg',
-  product_002: '/images/products/piccolo.jpg',
-  product_003: '/images/products/cortado.jpg',
-  product_004: '/images/products/cappuccino.jpg',
-  product_005: '/images/products/americano.jpg',
-  product_006: '/images/products/flat-white.jpg',
-  product_007: '/images/products/latte.jpg',
-  product_008: '/images/products/spanish-latte.jpg',
-  product_009: '/images/products/dopabeans-signature-hot.jpg',
-  product_010: '/images/products/spanish-cortado.jpg',
-  product_011: '/images/products/pistachio-latte.jpg',
-  product_012: '/images/products/dopabeans-signature-cold.jpg',
-  product_013: '/images/products/iced-spanish-latte.jpg',
-  product_014: '/images/products/iced-latte.jpg',
-  product_015: '/images/products/iced-americano.jpg',
-  product_016: '/images/products/iced-pistachio-latte.jpg',
-  product_017: '/images/products/iced-tea.jpg',
-  product_018: '/images/products/iced-tea-passion.jpg',
-  product_019: '/images/products/iced-tea-peach.jpg',
-  product_020: '/images/products/iced-tea-strawberry.jpg',
-  product_021: '/images/products/regular-matcha.jpg',
-  product_022: '/images/products/dopabeans-matcha.jpg',
-  product_023: '/images/products/cloud-matcha.jpg',
-  product_024: '/images/products/strawberry-matcha.jpg',
-  product_025: '/images/products/spacial-karkade.jpg',
-  product_026: '/images/products/dopabeans-mojitos.jpg',
-  product_027: '/images/products/acai-smoothie.jpg',
-  product_028: '/images/products/acai-bowl.jpg',
-  product_029: '/images/products/v60.jpg',
-  product_030: '/images/products/cold-brew.jpg'
+  pdct010: '/images/products/espresso.jpg',
+  espresso: '/images/products/espresso.jpg',
+  pdct020: '/images/products/piccolo.jpg',
+  piccolo: '/images/products/piccolo.jpg',
+  pdct030: '/images/products/cortado.jpg',
+  cortado: '/images/products/cortado.jpg',
+  pdct040: '/images/products/cappuccino.jpg',
+  cappuccino: '/images/products/cappuccino.jpg',
+  pdct050: '/images/products/americano.jpg',
+  americano: '/images/products/americano.jpg',
+  pdct060: '/images/products/flat-white.jpg',
+  flat_white: '/images/products/flat-white.jpg',
+  pdct070: '/images/products/latte.jpg',
+  latte: '/images/products/latte.jpg',
+  pdct080: '/images/products/spanish-latte.jpg',
+  spanish_latte: '/images/products/spanish-latte.jpg',
+  pdct090: '/images/products/dopabeans-signature-hot.jpg',
+  dopabeans_signature_hot: '/images/products/dopabeans-signature-hot.jpg',
+  pdct100: '/images/products/spanish-cortado.jpg',
+  spanish_cortado: '/images/products/spanish-cortado.jpg',
+  pdct110: '/images/products/pistachio-latte.jpg',
+  pistachio_latte: '/images/products/pistachio-latte.jpg',
+  pdct150: '/images/products/dopabeans-signature-cold.jpg',
+  dopabeans_signature_cold: '/images/products/dopabeans-signature-cold.jpg',
+  pdct160: '/images/products/iced-spanish-latte.jpg',
+  iced_spanish_latte: '/images/products/iced-spanish-latte.jpg',
+  pdct170: '/images/products/iced-latte.jpg',
+  iced_latte: '/images/products/iced-latte.jpg',
+  pdct180: '/images/products/iced-americano.jpg',
+  iced_americano: '/images/products/iced-americano.jpg',
+  pdct190: '/images/products/iced-pistachio-latte.jpg',
+  iced_pistachio_latte: '/images/products/iced-pistachio-latte.jpg',
+  pdct200: '/images/products/iced-tea.jpg',
+  iced_tea: '/images/products/iced-tea.jpg',
+  pdct210: '/images/products/iced-tea-passion.jpg',
+  iced_tea_passion: '/images/products/iced-tea-passion.jpg',
+  pdct220: '/images/products/iced-tea-peach.jpg',
+  iced_tea_peach: '/images/products/iced-tea-peach.jpg',
+  pdct230: '/images/products/iced-tea-strawberry.jpg',
+  iced_tea_strawberry: '/images/products/iced-tea-strawberry.jpg',
+  pdct270: '/images/products/coming-soon.jpg',
+  pdct280: '/images/products/regular-matcha.jpg',
+  regular: '/images/products/regular-matcha.jpg',
+  regular_matcha: '/images/products/regular-matcha.jpg',
+  pdct290: '/images/products/dopabeans-matcha.jpg',
+  dopabeans: '/images/products/dopabeans-matcha.jpg',
+  dopabeans_matcha: '/images/products/dopabeans-matcha.jpg',
+  pdct300: '/images/products/cloud-matcha.jpg',
+  cloud: '/images/products/cloud-matcha.jpg',
+  cloud_matcha: '/images/products/cloud-matcha.jpg',
+  pdct310: '/images/products/strawberry-matcha.jpg',
+  strawberry: '/images/products/strawberry-matcha.jpg',
+  strawberry_matcha: '/images/products/strawberry-matcha.jpg',
+  pdct340: '/images/products/coming-soon.jpg',
+  pdct350: '/images/products/coming-soon.jpg',
+  pdct360: '/images/products/coming-soon.jpg',
+  pdct370: '/images/products/coming-soon.jpg',
+  pdct380: '/images/products/coming-soon.jpg',
+  pdct390: '/images/products/coming-soon.jpg',
+  pdct400: '/images/products/coming-soon.jpg',
+  pdct410: '/images/products/coming-soon.jpg',
+  mojitos: '/images/products/coming-soon.jpg',
+  pdct420: '/images/products/acai-smoothie.jpg',
+  acai_smoothie: '/images/products/acai-smoothie.jpg',
+  pdct430: '/images/products/acai-bowl.jpg',
+  acai_bowl: '/images/products/acai-bowl.jpg',
+  pdct440: '/images/products/v60.jpg',
+  pdct450: '/images/products/v60.jpg',
+  v60: '/images/products/v60.jpg',
+  pdct480: '/images/products/cold-brew.jpg',
+  cold_brew: '/images/products/cold-brew.jpg',
+  pdct570: '/images/products/spacial-karkade.jpg',
+  karkade: '/images/products/spacial-karkade.jpg',
+  special_karkade: '/images/products/spacial-karkade.jpg',
+  spacial_karkade: '/images/products/spacial-karkade.jpg',
+  pdct590: '/images/products/mango-cake.jpg',
+  mango_cake: '/images/products/mango-cake.jpg',
+  pdct600: '/images/products/tiramisu.jpg',
+  tiramisu_cake: '/images/products/tiramisu.jpg',
+  tiramisu: '/images/products/tiramisu.jpg',
+  pdct620: '/images/products/aseeda.jpg',
+  molten_aseeda: '/images/products/aseeda.jpg',
+  aseeda: '/images/products/aseeda.jpg'
 }
 
 const DEFAULT_PROD_BACKEND_URL = 'https://dopabeans-backend.onrender.com'
@@ -161,7 +215,61 @@ const createProductSlug = (rawValue) => {
     .replace(/^_+|_+$/g, '')
 }
 
+const interpretYesNoValue = (value) => {
+  if (typeof value === 'boolean') return value
+  if (value == null) return null
+
+  if (typeof value === 'number') {
+    if (Number.isFinite(value)) {
+      if (value === 1) return true
+      if (value === 0) return false
+    }
+  }
+
+  const normalized = String(value).trim().toLowerCase()
+  if (!normalized) return null
+
+  if (
+    [
+      'yes',
+      'y',
+      'true',
+      '1',
+      'available',
+      'in stock',
+      'in_stock',
+      'instock',
+      'available_now',
+      'ready'
+    ].includes(normalized)
+  ) {
+    return true
+  }
+
+  if (
+    [
+      'no',
+      'n',
+      'false',
+      '0',
+      'sold out',
+      'sold_out',
+      'soldout',
+      'out of stock',
+      'out_of_stock',
+      'unavailable',
+      'not available',
+      'na'
+    ].includes(normalized)
+  ) {
+    return false
+  }
+
+  return null
+}
+
 const CART_STORAGE_KEY = 'dopabeans-cart-v1'
+const CART_EXPIRY_MS = 1000 * 60 * 10
 
 const getProductKey = (product) => {
   if (!product) return ''
@@ -174,6 +282,13 @@ const getProductKey = (product) => {
 const getProductSlugValue = (product) => createProductSlug(product?.slug || product?.name || product?.id)
 
 const isProductCustomizable = (product) => {
+  if (!product) return true
+
+  const explicitFlag = interpretYesNoValue(product.isCustomizable ?? product.is_customizabe)
+  if (explicitFlag !== null) {
+    return explicitFlag
+  }
+
   const slug = getProductSlugValue(product)
   const key = getProductKey(product)
   return !(NON_CUSTOMIZABLE_PRODUCTS.has(slug) || NON_CUSTOMIZABLE_PRODUCTS.has(key))
@@ -211,37 +326,129 @@ const sanitizeStoredCartItem = (entry) => {
   }
 }
 
-const loadStoredCartItems = () => {
-  if (typeof window === 'undefined') return []
+const loadStoredCartSnapshot = () => {
+  if (typeof window === 'undefined') {
+    return { items: [], savedAt: null }
+  }
+
   try {
     const raw = window.localStorage.getItem(CART_STORAGE_KEY)
-    if (!raw) return []
+    if (!raw) {
+      return { items: [], savedAt: null }
+    }
+
     const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map(sanitizeStoredCartItem).filter(Boolean)
+
+    let savedAt = null
+    let storedItems = []
+
+    if (Array.isArray(parsed)) {
+      storedItems = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.items)) {
+        storedItems = parsed.items
+      }
+      const parsedSavedAt = Number(parsed.savedAt)
+      savedAt = Number.isFinite(parsedSavedAt) ? parsedSavedAt : null
+    } else {
+      return { items: [], savedAt: null }
+    }
+
+    if (!Array.isArray(storedItems)) {
+      return { items: [], savedAt: null }
+    }
+
+    const now = Date.now()
+
+    if (savedAt && now - savedAt >= CART_EXPIRY_MS) {
+      try {
+        window.localStorage.removeItem(CART_STORAGE_KEY)
+      } catch (storageError) {
+        // Ignore removal issues; we'll treat the cart as empty.
+      }
+      return { items: [], savedAt: null }
+    }
+
+    const sanitizedItems = storedItems.map(sanitizeStoredCartItem).filter(Boolean)
+
+    if (!sanitizedItems.length) {
+      try {
+        window.localStorage.removeItem(CART_STORAGE_KEY)
+      } catch (storageError) {
+        // Ignore removal issues; the cart will be treated as empty.
+      }
+      return { items: [], savedAt: null }
+    }
+
+    return {
+      items: sanitizedItems,
+      savedAt: savedAt || now
+    }
   } catch (error) {
-    return []
+    return { items: [], savedAt: null }
   }
 }
 
-const serializeCartItemsForStorage = (items) =>
-  items.map((item) => ({
-    id: item.id,
-    product: item.product,
-    productKey: item.productKey,
-    entryKey: item.entryKey,
-    quantity: item.quantity,
-    milk: item.milk ?? null
-  }))
+const serializeCartItemsForStorage = (items, savedAt) => {
+  const timestamp = Number.isFinite(savedAt) ? savedAt : Date.now()
 
-const mapProductToDetails = (item) => {
-  const normalizedAvailability = (item.availability || '').toLowerCase()
-  const isInStock = normalizedAvailability === 'in stock'
-  const displayPrice = item.price != null ? item.price : item.rawPrice || 'Ask'
-  const sheetImagePath = item.imageUrl ? item.imageUrl.replace(/^https?:\/\/[^/]+/i, '') : ''
-  const imageSrc = PRODUCT_IMAGE_MAP[item.id] || sheetImagePath || item.imageUrl || '/images/logo.png'
-  const slugSource = item.product_slug || item.name || item.id
+  return {
+    version: 2,
+    savedAt: timestamp,
+    items: items.map((item) => ({
+      id: item.id,
+      product: item.product,
+      productKey: item.productKey,
+      entryKey: item.entryKey,
+      quantity: item.quantity,
+      milk: item.milk ?? null
+    }))
+  }
+}
+
+const mapProductToDetails = (item = {}) => {
+  const availabilityFlag = interpretYesNoValue(item.isAvailable ?? item.availability)
+  const isInStock = availabilityFlag !== false
+  const availabilityLabel = item.availability && String(item.availability).trim()
+    ? String(item.availability).trim()
+    : isInStock
+      ? 'In Stock'
+      : 'Sold Out'
+
+  const numericPrice = Number.isFinite(item.price) ? item.price : null
+  const price = isInStock ? numericPrice : null
+
+  const displayPrice = isInStock
+    ? price != null
+      ? price
+      : item.rawPrice || 'Ask'
+    : 'Sold Out'
+
+  const directImageUrl = item.imageUrl ? String(item.imageUrl).trim() : ''
+  const sheetImagePath =
+    directImageUrl && /^https?:\/\//i.test(directImageUrl)
+      ? directImageUrl.replace(/^https?:\/\/[^/]+/i, '')
+      : ''
+
+  const slugSource = item.slug || item.product_slug || item.name || item.id
   const slug = createProductSlug(slugSource)
+
+  const imageKeys = [
+    item.id ? String(item.id).toLowerCase() : null,
+    slug,
+    item.name ? createProductSlug(item.name) : null
+  ].filter(Boolean)
+
+  let resolvedImage = null
+  for (const key of imageKeys) {
+    if (PRODUCT_IMAGE_MAP[key]) {
+      resolvedImage = PRODUCT_IMAGE_MAP[key]
+      break
+    }
+  }
+
+  const imageSrc = resolvedImage || sheetImagePath || directImageUrl || DEFAULT_PRODUCT_IMAGE
+  const normalizedAvailability = availabilityLabel.toLowerCase()
 
   return {
     ...item,
@@ -249,7 +456,10 @@ const mapProductToDetails = (item) => {
     isInStock,
     displayPrice,
     imageSrc,
-    slug
+    slug,
+    availability: availabilityLabel,
+    isAvailable: isInStock,
+    price
   }
 }
 
@@ -335,19 +545,42 @@ const buildMenuSections = (csvRows) => {
     }
 
     const priceValue = Number(item.product_price)
+    const availabilityValue =
+      interpretYesNoValue(item.is_available) ?? interpretYesNoValue(item.product_availability)
+    const isAvailable = availabilityValue !== false
+    const rawAvailability = item.product_availability ? item.product_availability.trim() : ''
+    let availabilityLabel = rawAvailability
+    if (availabilityLabel) {
+      const interpretedAvailability = interpretYesNoValue(availabilityLabel)
+      if (interpretedAvailability !== null) {
+        availabilityLabel = interpretedAvailability ? 'In Stock' : 'Sold Out'
+      }
+    } else {
+      availabilityLabel = isAvailable ? 'In Stock' : 'Sold Out'
+    }
+    const slug = createProductSlug(item.product_slug || item.product_name || item.product_id)
+    const customizableValue =
+      interpretYesNoValue(item.is_customizabe) ?? interpretYesNoValue(item.is_customizable)
+    const isCustomizable =
+      customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
+    const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
+
     sections.get(category).push({
       id: item.product_id || item.product_name,
       name: item.product_name || 'Untitled Item',
       price: Number.isFinite(priceValue) ? priceValue : null,
       rawPrice: item.product_price || '',
-      imageUrl: item.product_image_url || '',
+      imageUrl: rawImageUrl,
       description: item.product_description || '',
-      link: item.product_link || '',
-      availability: item.product_availability || 'in stock'
+      link: item.product_link ? item.product_link.trim() : '',
+      availability: availabilityLabel,
+      isAvailable,
+      isCustomizable,
+      slug
     })
   })
 
-  return Array.from(sections.entries()).map(([category, products]) => ({
+  const unsortedSections = Array.from(sections.entries()).map(([category, products]) => ({
     category,
     products: products.sort((a, b) => {
       if (a.price == null && b.price == null) return 0
@@ -356,6 +589,12 @@ const buildMenuSections = (csvRows) => {
       return b.price - a.price
     })
   }))
+
+  return unsortedSections.sort((a, b) => {
+    const difference = b.products.length - a.products.length
+    if (difference !== 0) return difference
+    return a.category.localeCompare(b.category)
+  })
 }
 
 const CurrencyIcon = ({ className = '' }) => (
@@ -428,12 +667,17 @@ const hasVisibleText = (element) => {
 }
 
 function App() {
+  const initialCartSnapshotRef = useRef(null)
+  if (initialCartSnapshotRef.current === null) {
+    initialCartSnapshotRef.current = loadStoredCartSnapshot()
+  }
+
   const [currentPath, setCurrentPath] = useState(() => {
     if (typeof window === 'undefined') return '/'
     return window.location.pathname || '/'
   })
   const [pendingScrollTarget, setPendingScrollTarget] = useState(null)
-  const [cartItems, setCartItems] = useState(() => loadStoredCartItems())
+  const [cartItems, setCartItems] = useState(() => initialCartSnapshotRef.current.items)
   const [cartFlow, setCartFlow] = useState({
     step: null,
     product: null,
@@ -455,6 +699,9 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [standaloneProductId, setStandaloneProductId] = useState(null)
   const [expandedProductKey, setExpandedProductKey] = useState(null)
+  const cartLastSavedAtRef = useRef(initialCartSnapshotRef.current.savedAt)
+  const cartHydratedRef = useRef(false)
+  const cartExpiryTimeoutRef = useRef(null)
   const cartItemCount = useMemo(
     () => cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0),
     [cartItems]
@@ -466,20 +713,116 @@ function App() {
       return sum + price * item.quantity
     }, 0)
   }, [cartItems])
+  const menuCategoryDescriptors = useMemo(() => {
+    const seen = new Set()
+    return menuSections
+      .filter((section) => section && Array.isArray(section.products) && section.products.length > 0)
+      .map((section, index) => {
+        let slug = createProductSlug(section.category) || `category-${index + 1}`
+        while (seen.has(slug)) {
+          slug = `${slug}-${index + 1}`
+        }
+        seen.add(slug)
+        return {
+          section,
+          category: section.category,
+          slug
+        }
+      })
+  }, [menuSections])
+
+  const clearCartExpiryTimer = () => {
+    if (cartExpiryTimeoutRef.current != null) {
+      clearTimeout(cartExpiryTimeoutRef.current)
+      cartExpiryTimeoutRef.current = null
+    }
+  }
+
+  const handleCartExpiry = () => {
+    clearCartExpiryTimer()
+
+    const hadItems = Array.isArray(cartItems) && cartItems.length > 0
+
+    cartLastSavedAtRef.current = null
+    cartHydratedRef.current = false
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(CART_STORAGE_KEY)
+      } catch (storageError) {
+        // Ignore removal issues; we'll treat the cart as cleared.
+      }
+    }
+
+    if (!hadItems) {
+      return
+    }
+
+    setCartItems([])
+    setCartFlow(resetCartFlow())
+    setOrderFlow(createInitialOrderFlowState())
+    setCartModalOpen(false)
+    setCartFeedback('Cart cleared after 10 minutes of inactivity.')
+  }
+
+  const scheduleCartExpiryCheck = (savedAt) => {
+    if (typeof window === 'undefined') return
+
+    clearCartExpiryTimer()
+    if (!Number.isFinite(savedAt)) {
+      return
+    }
+
+    const now = Date.now()
+    const millisecondsUntilExpiry = savedAt + CART_EXPIRY_MS - now
+
+    if (millisecondsUntilExpiry <= 0) {
+      handleCartExpiry()
+      return
+    }
+
+    cartExpiryTimeoutRef.current = window.setTimeout(() => {
+      handleCartExpiry()
+    }, millisecondsUntilExpiry)
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
-    try {
-      if (!cartItems || cartItems.length === 0) {
+
+    clearCartExpiryTimer()
+
+    if (!cartItems || cartItems.length === 0) {
+      try {
         window.localStorage.removeItem(CART_STORAGE_KEY)
-      } else {
-        const payload = JSON.stringify(serializeCartItemsForStorage(cartItems))
-        window.localStorage.setItem(CART_STORAGE_KEY, payload)
+      } catch (storageError) {
+        // Ignore storage errors when clearing the cart.
       }
+      cartLastSavedAtRef.current = null
+      cartHydratedRef.current = false
+      return undefined
+    }
+
+    const baseSavedAt =
+      cartHydratedRef.current && Number.isFinite(cartLastSavedAtRef.current)
+        ? Date.now()
+        : cartLastSavedAtRef.current ?? Date.now()
+
+    const snapshot = serializeCartItemsForStorage(cartItems, baseSavedAt)
+
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(snapshot))
     } catch (error) {
       // Ignore storage errors to avoid blocking the UI.
     }
-    return undefined
+
+    cartLastSavedAtRef.current = snapshot.savedAt
+    cartHydratedRef.current = true
+
+    scheduleCartExpiryCheck(snapshot.savedAt)
+
+    return () => {
+      clearCartExpiryTimer()
+    }
   }, [cartItems])
 
   const resetOrderFlow = () => {
@@ -532,6 +875,12 @@ function App() {
     scrollToSection(targetId)
   }
 
+  const handleMenuCategoryNavigation = (categorySlug) => {
+    if (!categorySlug) return
+    const targetId = `category-${categorySlug}`
+    scrollToSection(targetId)
+  }
+
   const handleLogoClick = () => {
     if (currentPath === '/') {
       scrollToSection('home')
@@ -550,16 +899,18 @@ function App() {
     resetOrderFlow()
   }
 
-  const resetCartFlow = () => ({
-    step: null,
-    product: null,
-    quantity: 1,
-    milk: 'normal',
-    requiresMilk: true,
-    mode: 'add',
-    originalEntryKey: null,
-    originalEntryId: null
-  })
+  function resetCartFlow() {
+    return {
+      step: null,
+      product: null,
+      quantity: 1,
+      milk: 'normal',
+      requiresMilk: true,
+      mode: 'add',
+      originalEntryKey: null,
+      originalEntryId: null
+    }
+  }
 
   const closeCartFlow = () => {
     setCartFlow(resetCartFlow())
@@ -1407,7 +1758,7 @@ function App() {
                         <div className="flex items-center justify-between text-sm text-gray-600">
                           <span>Price</span>
                           <span className="flex items-center gap-1">
-                            <CurrencyIcon className="w-4 h-4" />
+                            {hasUnitPrice ? <CurrencyIcon className="w-4 h-4" /> : null}
                             {item.product?.displayPrice || item.product?.rawPrice || 'Ask'}
                           </span>
                         </div>
@@ -1605,7 +1956,7 @@ function App() {
               <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
             )}
             <div className="flex items-center gap-2 text-xl font-semibold text-gray-900">
-              <CurrencyIcon className="w-6 h-6" />
+              {standaloneProduct.price != null ? <CurrencyIcon className="w-6 h-6" /> : null}
               {standaloneProduct.displayPrice}
             </div>
             {!standaloneProduct.isInStock && standaloneProduct.normalizedAvailability && (
@@ -1734,6 +2085,26 @@ function App() {
             )}
           </div>
         </div>
+        {isMenuPage && menuCategoryDescriptors.length > 0 ? (
+          <div className="px-2 sm:px-10 mt-4 mb-20 sm:mb-24">
+            <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl border border-white/40">
+              <div className="px-3 sm:px-6 py-3 overflow-hidden">
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {menuCategoryDescriptors.map(({ category, slug }) => (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() => handleMenuCategoryNavigation(slug)}
+                      className="px-4 sm:px-5 py-2 text-sm sm:text-base font-semibold text-[#23314F] bg-white border border-[#23314F]/20 rounded-md whitespace-nowrap shadow hover:bg-[#23314F] hover:text-white hover:border-[#23314F] transition-all duration-200"
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {!isMenuPage && menuOpen && (
           <div className="md:hidden bg-[#23314F] shadow px-4 pb-4 space-y-3 text-center">
             <button
@@ -1751,7 +2122,7 @@ function App() {
       </header>
 
       {isMenuPage ? (
-        <main className="pt-32 sm:pt-36 pb-20 px-3 sm:px-8">
+        <main className="pt-48 sm:pt-56 pb-20 px-3 sm:px-8">
           <div className="w-full max-w-[96rem] mx-auto space-y-10">
             {cartFeedback ? (
               <div className="text-sm sm:text-base text-green-800 bg-green-100 border border-green-200 rounded p-4 shadow">
@@ -1767,16 +2138,20 @@ function App() {
                 {menuError ? <p className="text-sm mt-2">{menuError}</p> : null}
               </div>
             ) : null}
-            {menuStatus === 'success' && menuSections.length === 0 ? (
+            {menuStatus === 'success' && menuCategoryDescriptors.length === 0 ? (
               <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
             ) : null}
-            {menuStatus === 'success' && menuSections.length > 0
-              ? menuSections.map((section) => {
+            {menuStatus === 'success' && menuCategoryDescriptors.length > 0
+              ? menuCategoryDescriptors.map(({ section, slug }) => {
                   if (!section || !Array.isArray(section.products) || section.products.length === 0) {
                     return null
                   }
                   return (
-                    <section key={section.category} className="space-y-4">
+                    <section
+                      key={section.category || slug}
+                      id={`category-${slug}`}
+                      className="space-y-4 scroll-mt-32 sm:scroll-mt-36"
+                    >
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <h3 className="text-xl sm:text-2xl font-bold text-[#23314F]">{section.category}</h3>
                         <span className="text-xs sm:text-sm text-gray-500">
@@ -1786,9 +2161,10 @@ function App() {
                       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-5 lg:gap-6">
                         {section.products.map((item) => {
                           const productDetails = mapProductToDetails(item)
-                          const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
+                          const { displayPrice, imageSrc, isInStock, normalizedAvailability, price } = productDetails
                           const productKey = getProductKey(productDetails) || productDetails.slug || item.id || item.name
                           const isAvailable = isInStock
+                          const showCurrencyIcon = price != null
 
                           return (
                             <div
@@ -1820,7 +2196,7 @@ function App() {
                                   {productDetails.name}
                                 </a>
                                 <span className="flex items-center gap-1">
-                                  <CurrencyIcon className="w-4 h-4" />
+                                  {showCurrencyIcon ? <CurrencyIcon className="w-4 h-4" /> : null}
                                   {displayPrice}
                                 </span>
                                 {!isAvailable && normalizedAvailability ? (
@@ -1901,7 +2277,7 @@ function App() {
                     {expandedProductDetails.name}
                   </h3>
                   <div className="flex items-center gap-2 text-lg font-medium text-gray-800">
-                    <CurrencyIcon className="w-5 h-5" />
+                    {expandedProductDetails.price != null ? <CurrencyIcon className="w-5 h-5" /> : null}
                     {expandedProductDetails.displayPrice}
                   </div>
                   {expandedProductDetails.description ? (
@@ -1984,21 +2360,23 @@ function App() {
                   </div>
                 )}
 
-                {menuStatus === 'success' && menuSections.length === 0 && (
+                {menuStatus === 'success' && menuCategoryDescriptors.length === 0 && (
                   <p className="text-center text-base sm:text-lg text-gray-600">Menu will be available shortly.</p>
                 )}
 
-                {menuSections.map((section) => (
-                  <div key={section.category}>
+                {menuCategoryDescriptors.map(({ section, slug }) => (
+                  <div key={section.category || slug} id={`category-${slug}`} className="scroll-mt-32 sm:scroll-mt-36">
                     <h3 className="text-xl sm:text-2xl font-bold mb-4">{section.category}</h3>
                     <ul className="w-full flex overflow-x-auto space-x-4 snap-x snap-mandatory pb-2 justify-start">
                       {section.products.map((item) => {
                         const productDetails = mapProductToDetails(item)
-                        const { displayPrice, imageSrc, isInStock, normalizedAvailability } = productDetails
+                        const { displayPrice, imageSrc, isInStock, normalizedAvailability, price } = productDetails
+                        const productKey = getProductKey(productDetails) || productDetails.slug || item.id || item.name
+                        const showCurrencyIcon = price != null
 
                         return (
                           <li
-                            key={item.id}
+                            key={productKey}
                             className="min-w-[150px] sm:min-w-[200px] snap-start shrink-0 bg-gray-100 p-4 rounded shadow text-left"
                           >
                             <button
@@ -2024,7 +2402,7 @@ function App() {
                                 {productDetails.name}
                               </a>
                               <span className="flex items-center gap-1">
-                                <CurrencyIcon className="w-4 h-4" />
+                                {showCurrencyIcon ? <CurrencyIcon className="w-4 h-4" /> : null}
                                 {displayPrice}
                               </span>
                               {!isInStock && normalizedAvailability && (
@@ -2044,7 +2422,7 @@ function App() {
             </div>
           </section>
 
-          <section id="vision" className="py-20 px-4 sm:px-8 text-center">
+          <section id="vision" className="py-12 sm:py-14 px-4 sm:px-8 text-center">
             <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
               <h2 className="text-2xl sm:text-3xl font-bold">Our Vision</h2>
               <p className="text-gray-700">
@@ -2053,7 +2431,7 @@ function App() {
             </div>
           </section>
 
-          <section id="about" className="py-20 px-4 sm:px-8 text-center">
+          <section id="about" className="py-12 sm:py-14 px-4 sm:px-8 text-center">
             <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
               <h2 className="text-2xl sm:text-3xl font-bold">About Us</h2>
               <p className="text-base sm:text-lg text-gray-700">
@@ -2062,7 +2440,7 @@ function App() {
             </div>
           </section>
 
-          <section id="contact" className="py-20 px-4 sm:px-8 text-center">
+          <section id="contact" className="py-12 sm:py-14 px-4 sm:px-8 text-center">
             <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl p-6 sm:p-10 space-y-4">
               <h2 className="text-2xl sm:text-3xl font-bold">Contact Us</h2>
               <p className="text-base sm:text-lg text-gray-700">info@dopabeansuae.com</p>
@@ -2131,7 +2509,7 @@ function App() {
                   {selectedProduct?.name}
                 </h3>
                 <div className="flex items-center gap-2 text-lg font-medium text-gray-800">
-                  <CurrencyIcon className="w-5 h-5" />
+                  {selectedProduct?.price != null ? <CurrencyIcon className="w-5 h-5" /> : null}
                   {selectedProduct?.displayPrice}
                 </div>
                 {selectedProduct?.description ? (
