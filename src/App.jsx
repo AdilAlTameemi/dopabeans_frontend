@@ -2121,7 +2121,11 @@ function App() {
       <header className="absolute top-0 left-0 w-full z-50">
         <div className="px-2 sm:px-10 pt-6">
           <div className="bg-white bg-opacity-95 rounded shadow-2xl flex items-center justify-between py-1.5 sm:py-2 px-3 sm:px-5 w-full max-w-[96rem] mx-auto">
-            {isMenuPage ? (
+            {isPaymentSuccessPage ? (
+              <div className="w-full flex justify-center">
+                <img src="/images/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
+              </div>
+            ) : isMenuPage ? (
               <>
                 <button
                   type="button"
@@ -2417,31 +2421,20 @@ function App() {
           ) : null}
         </main>
       ) : isPaymentSuccessPage ? (
-        <main className="min-h-screen pt-40 pb-24 px-4 sm:px-8 bg-gradient-to-b from-white via-[#f5f6f8] to-white">
+        <main className="min-h-screen pt-44 pb-24 px-4 sm:px-8 bg-gradient-to-b from-white via-[#f5f6f8] to-white">
           <div className="w-full max-w-2xl mx-auto text-center space-y-8">
             <div className="space-y-3">
               <h1 className="text-3xl sm:text-4xl font-bold text-[#23314F]">Payment Successful</h1>
               <p className="text-base sm:text-lg text-gray-700">
-                {paymentSuccessOrderNumber
-                  ? `Thanks! Your order ${paymentSuccessOrderNumber} is confirmed. We'll start preparing it now.`
-                  : 'Thanks! Your payment went through. We will confirm your order in WhatsApp.'}
+                Thanks! Your payment is confirmed. Tap below so Mira can share your order number in WhatsApp.
               </p>
             </div>
-            {paymentSuccessOrderNumber ? (
-              <div className="bg-white border border-green-200 shadow-sm rounded-lg px-4 py-3">
-                <p className="text-sm sm:text-base text-green-800">
-                  Order Number:{' '}
-                  <span className="font-semibold tracking-wide">{paymentSuccessOrderNumber}</span>
-                </p>
-              </div>
-            ) : (
-              <div className="bg-white border border-yellow-200 shadow-sm rounded-lg px-4 py-3">
-                <p className="text-sm sm:text-base text-yellow-800">
-                  We could not retrieve your order number automatically. Tap below and Mira will take it from here.
-                </p>
-              </div>
-            )}
-            <div className="space-y-4">
+            <div className="bg-white border border-green-200 shadow-sm rounded-lg px-4 py-3">
+              <p className="text-sm sm:text-base text-green-800">
+                We’ll let Mira know you’re ready—just tap the button and she’ll reply with your order number instantly.
+              </p>
+            </div>
+            <div className="flex flex-col items-center gap-4">
               <a
                 href={paymentSuccessWhatsappUrl}
                 className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 rounded-full bg-[#25D366] text-white text-sm sm:text-base font-semibold shadow-lg hover:opacity-90 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#25D366]"
