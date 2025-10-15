@@ -5,6 +5,7 @@ const MENU_SHEET_CSV_URL =
 const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v1'
 const MENU_CACHE_TTL_MS = 1000 * 60 * 30
 const DEFAULT_PRODUCT_IMAGE = '/images/products/coming-soon.jpg'
+const WHATSAPP_PHONE_NUMBER = '971501983844'
 const PRODUCT_IMAGE_MAP = {
   pdct010: '/images/products/espresso.jpg',
   espresso: '/images/products/espresso.jpg',
@@ -133,6 +134,12 @@ const buildBackendUrl = (path) => {
     return normalizedPath
   }
   return `${BACKEND_BASE_URL}${normalizedPath}`
+}
+
+const buildWhatsappConfirmationUrl = (orderNumber) => {
+  const suffix = typeof orderNumber === 'string' && orderNumber.trim().length > 0 ? orderNumber.trim() : ''
+  const message = suffix ? `paid_${suffix}` : 'paid'
+  return `https://wa.me/${WHATSAPP_PHONE_NUMBER}?text=${encodeURIComponent(message)}`
 }
 
 const MILK_OPTIONS = [
@@ -269,6 +276,7 @@ const interpretYesNoValue = (value) => {
 }
 
 const CART_STORAGE_KEY = 'dopabeans-cart-v1'
+const ORDER_REFERENCE_STORAGE_KEY = 'dopabeans-last-order-reference-v1'
 const CART_EXPIRY_MS = 1000 * 60 * 10
 
 const getProductKey = (product) => {
@@ -388,6 +396,65 @@ const loadStoredCartSnapshot = () => {
     return { items: [], savedAt: null }
   }
 }
+
+const loadStoredOrderReference = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(ORDER_REFERENCE_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+
+    const orderNumber = typeof parsed.orderNumber === 'string' && parsed.orderNumber.trim().length > 0
+      ? parsed.orderNumber.trim()
+      : null
+
+    if (!orderNumber) {
+      return null
+    }
+
+    const savedAtValue = Number(parsed.savedAt)
+    return {
+      orderNumber,
+      savedAt: Number.isFinite(savedAtValue) ? savedAtValue : null
+    }
+  } catch (error) {
+    return null
+  }
+}
+
+const persistOrderReference = (orderNumber) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (typeof orderNumber !== 'string') {
+    return
+  }
+
+  const trimmed = orderNumber.trim()
+  if (!trimmed) {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(
+      ORDER_REFERENCE_STORAGE_KEY,
+      JSON.stringify({ orderNumber: trimmed, savedAt: Date.now() })
+    )
+  } catch (storageError) {
+    // Ignore storage issues.
+  }
+}
+
 
 const serializeCartItemsForStorage = (items, savedAt) => {
   const timestamp = Number.isFinite(savedAt) ? savedAt : Date.now()
@@ -699,6 +766,7 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [standaloneProductId, setStandaloneProductId] = useState(null)
   const [expandedProductKey, setExpandedProductKey] = useState(null)
+  const [latestOrderReference, setLatestOrderReference] = useState(() => loadStoredOrderReference())
   const cartLastSavedAtRef = useRef(initialCartSnapshotRef.current.savedAt)
   const cartHydratedRef = useRef(false)
   const cartExpiryTimeoutRef = useRef(null)
@@ -1047,6 +1115,16 @@ function App() {
       const data = await response.json()
       if (!data?.redirect_url) {
         throw new Error('Payment provider did not return a redirect link.')
+      }
+
+      const orderNumber =
+        typeof data.order_number === 'string' && data.order_number.trim().length > 0
+          ? data.order_number.trim()
+          : null
+
+      if (orderNumber) {
+        persistOrderReference(orderNumber)
+        setLatestOrderReference({ orderNumber, savedAt: Date.now() })
       }
 
       closeCartModal()
@@ -1490,6 +1568,34 @@ function App() {
 
   const isStandaloneView = Boolean(standaloneProductId)
   const isMenuPage = currentPath === '/menu'
+  const isPaymentSuccessPage = currentPath === '/payment-success'
+  const paymentSuccessOrderNumber = latestOrderReference?.orderNumber || ''
+  const paymentSuccessWhatsappUrl = buildWhatsappConfirmationUrl(paymentSuccessOrderNumber)
+
+  useEffect(() => {
+    if (!isPaymentSuccessPage) {
+      return undefined
+    }
+
+    clearCartExpiryTimer()
+    setCartItems([])
+    setCartFlow(resetCartFlow())
+    setOrderFlow(createInitialOrderFlowState())
+    setCartModalOpen(false)
+    setCartFeedback(null)
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(CART_STORAGE_KEY)
+      } catch (storageError) {
+        // Ignore removal failures.
+      }
+    }
+
+    setLatestOrderReference(loadStoredOrderReference())
+
+    return undefined
+  }, [isPaymentSuccessPage])
   useEffect(() => {
     if (!isMenuPage) {
       closeExpandedProductCard()
@@ -2309,6 +2415,49 @@ function App() {
               </div>
             </div>
           ) : null}
+        </main>
+      ) : isPaymentSuccessPage ? (
+        <main className="min-h-screen pt-40 pb-24 px-4 sm:px-8 bg-gradient-to-b from-white via-[#f5f6f8] to-white">
+          <div className="w-full max-w-2xl mx-auto text-center space-y-8">
+            <div className="space-y-3">
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#23314F]">Payment Successful</h1>
+              <p className="text-base sm:text-lg text-gray-700">
+                {paymentSuccessOrderNumber
+                  ? `Thanks! Your order ${paymentSuccessOrderNumber} is confirmed. We'll start preparing it now.`
+                  : 'Thanks! Your payment went through. We will confirm your order in WhatsApp.'}
+              </p>
+            </div>
+            {paymentSuccessOrderNumber ? (
+              <div className="bg-white border border-green-200 shadow-sm rounded-lg px-4 py-3">
+                <p className="text-sm sm:text-base text-green-800">
+                  Order Number:{' '}
+                  <span className="font-semibold tracking-wide">{paymentSuccessOrderNumber}</span>
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white border border-yellow-200 shadow-sm rounded-lg px-4 py-3">
+                <p className="text-sm sm:text-base text-yellow-800">
+                  We could not retrieve your order number automatically. Tap below and Mira will take it from here.
+                </p>
+              </div>
+            )}
+            <div className="space-y-4">
+              <a
+                href={paymentSuccessWhatsappUrl}
+                className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 rounded-full bg-[#25D366] text-white text-sm sm:text-base font-semibold shadow-lg hover:opacity-90 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#25D366]"
+                data-ignore-auto-contrast
+              >
+                View Order Number
+              </a>
+              <button
+                type="button"
+                onClick={() => navigateToPath('/menu')}
+                className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 rounded-full border border-[#23314F] text-[#23314F] text-sm sm:text-base font-semibold hover:bg-[#23314F] hover:text-white transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#23314F]"
+              >
+                Return to Menu
+              </button>
+            </div>
+          </div>
         </main>
       ) : (
         <main className="pt-0 sm:pt-1">
