@@ -2196,11 +2196,15 @@ function App() {
               </>
             ) : (
               <>
-                <button type="button" onClick={handleLogoClick} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
-                  <img src="/images/assets/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
+                <button
+                  type="button"
+                  onClick={handleLogoClick}
+                  className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0"
+                >
+                  <img src="/images/assets/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
                 </button>
                 <nav
-                  className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-[#23314F]"
+                  className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-sm sm:text-base text-[#23314F]"
                   data-ignore-auto-contrast
                 >
                   <button
@@ -2234,10 +2238,15 @@ function App() {
                   </button>
                 </nav>
                 <button className="md:hidden text-[#23314F]" onClick={() => setMenuOpen(!menuOpen)}>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"
-                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="M4 6h16M4 12h16M4 18h16" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                 </button>
               </>
