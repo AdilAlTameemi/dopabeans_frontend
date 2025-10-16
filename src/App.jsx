@@ -1877,7 +1877,8 @@ function App() {
                     const unitPrice = Number(item.product?.price)
                     const hasUnitPrice = Number.isFinite(unitPrice)
                     const lineTotal = hasUnitPrice ? (unitPrice * item.quantity).toFixed(2) : null
-                    const previewImage = item.product?.imageSrc || item.product?.imageUrl || '/images/logo.png'
+                    const previewImage =
+                      item.product?.imageSrc || item.product?.imageUrl || '/images/assets/logo.png'
 
                     return (
                       <li key={item.id} className="border border-gray-200 rounded p-3 space-y-3">
@@ -2171,7 +2172,7 @@ function App() {
           <div className="bg-white bg-opacity-95 rounded shadow-2xl flex items-center justify-between py-1.5 sm:py-2 px-3 sm:px-5 w-full max-w-[96rem] mx-auto">
             {isPaymentSuccessPage ? (
               <div className="w-full flex justify-center">
-                <img src="/images/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
+                <img src="/images/assets/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
               </div>
             ) : isMenuPage ? (
               <>
@@ -2180,7 +2181,7 @@ function App() {
                   onClick={handleLogoClick}
                   className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0"
                 >
-                  <img src="/images/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
+                  <img src="/images/assets/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
                 </button>
                 <span className="flex-1 text-center text-base sm:text-lg font-semibold uppercase tracking-wide text-[#23314F]">
                   Menu
@@ -2196,7 +2197,7 @@ function App() {
             ) : (
               <>
                 <button type="button" onClick={handleLogoClick} className="cursor-pointer bg-transparent border-0 p-0 flex-shrink-0">
-                  <img src="/images/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
+                  <img src="/images/assets/logo.png" alt="DopaBeans logo" className="w-[180px] sm:w-[240px] h-auto" />
                 </button>
                 <nav
                   className="hidden sm:flex sm:space-x-4 md:space-x-6 font-semibold text-base sm:text-lg text-[#23314F]"
@@ -2507,7 +2508,7 @@ function App() {
                 style={{ width: '96rem', minWidth: '96rem', maxWidth: '96rem', height: '54rem', minHeight: '54rem', maxHeight: '54rem' }}
               >
                 <img
-                  src="/images/hero/hero.jpg"
+                  src="/images/assets/hero.jpg"
                   alt="Guests enjoying the atmosphere at DopaBeans Café"
                   className="w-full h-full object-cover rounded"
                 />
