@@ -60,7 +60,6 @@ const PRODUCT_IMAGE_MAP = {
   iced_tea_peach: '/images/products/iced-tea-peach.jpg',
   pdct230: '/images/products/iced-tea-strawberry.jpg',
   iced_tea_strawberry: '/images/products/iced-tea-strawberry.jpg',
-  pdct270: '/images/products/coming-soon.jpg',
   pdct280: '/images/products/regular-matcha.jpg',
   regular: '/images/products/regular-matcha.jpg',
   regular_matcha: '/images/products/regular-matcha.jpg',
