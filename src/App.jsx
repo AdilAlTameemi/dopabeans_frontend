@@ -2517,7 +2517,7 @@ function App() {
         <main className="pt-0 sm:pt-1">
           <section
             id="home"
-            className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-24 pb-44"
+            className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-16 pb-36"
           >
             <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-12 sm:py-20 overflow-auto">
               <div
