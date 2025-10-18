@@ -101,8 +101,8 @@ const PRODUCT_IMAGE_MAP = {
   v60_cold: '/images/products/V60-Cold.jpg',
   pdct450: '/images/products/Chemex-Hot.jpg',
   chemex_hot: '/images/products/Chemex-Hot.jpg',
-  pdct460: '/images/products/Chemex-Cold.png',
-  chemex_cold: '/images/products/Chemex-Cold.png',
+  pdct460: '/images/products/Chemex-Cold.jpg',
+  chemex_cold: '/images/products/Chemex-Cold.jpg',
   pdct470: '/images/products/cold-brew.jpg',
   cold_brew: '/images/products/cold-brew.jpg',
   pdct480: '/images/products/Banana-Frappe.jpg',
@@ -131,13 +131,21 @@ const PRODUCT_IMAGE_MAP = {
   pdct590: '/images/products/tiramisu.jpg',
   tiramisu_cake: '/images/products/tiramisu.jpg',
   tiramisu: '/images/products/tiramisu.jpg',
-  pdct600: '/images/products/Sebastian-Cheesecake.png',
-  sebastian_cheese_cake: '/images/products/Sebastian-Cheesecake.png',
+  pdct600: '/images/products/Sebastian-Cheesecake.jpg',
+  sebastian_cheese_cake: '/images/products/Sebastian-Cheesecake.jpg',
   pdct610: '/images/products/aseeda.jpg',
   molten_aseeda: '/images/products/aseeda.jpg',
   aseeda: '/images/products/aseeda.jpg',
-  pdct620: '/images/products/Sparkling-Water.jpg',
-  sparkling_water: '/images/products/Sparkling-Water.jpg'
+  pdct620: '/images/products/choclate-cake.jpg',
+  choclate_cake: '/images/products/choclate-cake.jpg',
+  pdct630: '/images/products/cookie.jpg',
+  coockie: '/images/products/cookie.jpg',
+  cookie: '/images/products/cookie.jpg',
+  pdct640: '/images/products/Sparkling-Water.jpg',
+  sparkling_water: '/images/products/Sparkling-Water.jpg',
+  pdct650: '/images/products/Normal-Water.jpg',
+  normal_water: '/images/products/Normal-Water.jpg',
+  water: '/images/products/Normal-Water.jpg'
 }
 
 const DEFAULT_PROD_BACKEND_URL = 'https://dopabeans-backend.onrender.com'
