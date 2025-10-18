@@ -688,7 +688,7 @@ const buildMenuSections = (csvRows) => {
       customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
     const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
 
-    sections.get(category).push({
+    const baseEntry = {
       id: item.product_id || item.product_name,
       name: item.product_name || 'Untitled Item',
       price: Number.isFinite(priceValue) ? priceValue : null,
@@ -700,7 +700,27 @@ const buildMenuSections = (csvRows) => {
       isAvailable,
       isCustomizable,
       slug
-    })
+    }
+
+    sections.get(category).push(baseEntry)
+
+    if (baseEntry.name && baseEntry.name.toLowerCase() === 'acai smoothie') {
+      const duplicateCategory = 'Smoothie'
+      if (!sections.has(duplicateCategory)) {
+        sections.set(duplicateCategory, [])
+      }
+      const targetList = sections.get(duplicateCategory)
+      const existingDuplicate = targetList.some(
+        (entry) => createProductSlug(entry.name) === createProductSlug(baseEntry.name)
+      )
+      if (!existingDuplicate) {
+        targetList.push({
+          ...baseEntry,
+          id: `${baseEntry.id || 'acai-smoothie'}-smoothie`,
+          slug: baseEntry.slug || createProductSlug(baseEntry.name)
+        })
+      }
+    }
   })
 
   const unsortedSections = Array.from(sections.entries()).map(([category, products]) => ({
@@ -2517,9 +2537,9 @@ function App() {
         <main className="pt-0 sm:pt-1">
           <section
             id="home"
-            className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-24 pb-44"
+            className="relative z-0 min-h-[80vh] flex items-center justify-center text-center pt-16 pb-40"
           >
-            <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-12 sm:py-20 overflow-auto">
+            <div className="relative z-10 flex justify-center w-full px-2 sm:px-10 py-10 sm:py-16 overflow-auto">
               <div
                 className="bg-white p-4 sm:p-6 rounded shadow-2xl"
                 style={{ width: '96rem', minWidth: '96rem', maxWidth: '96rem', height: '54rem', minHeight: '54rem', maxHeight: '54rem' }}
