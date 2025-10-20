@@ -1042,6 +1042,10 @@ function App() {
 
   const startOrderFlow = () => {
     if (cartItems.length === 0) return
+    if (isSubMenuPage) {
+      setOrderFlow({ step: 'table', type: 'in-house', table: null })
+      return
+    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
@@ -1059,6 +1063,10 @@ function App() {
   }
 
   const handleOrderFlowBackToType = () => {
+    if (isSubMenuPage) {
+      setOrderFlow({ step: 'table', type: 'in-house', table: null })
+      return
+    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
@@ -1066,35 +1074,31 @@ function App() {
     setOrderFlow({ step: 'table', type: 'in-house', table: orderFlow.table })
   }
 
-  const handleOrderPayNow = async () => {
-    if (isProcessingPayment) return
-    if (cartItems.length === 0) return
+  const buildOrderSubmission = () => {
+    if (cartItems.length === 0) {
+      setCartFeedback('Add items to the cart before continuing.')
+      return null
+    }
 
     if (!orderFlow.type) {
-      setCartFeedback('Please choose an order type before paying.')
-      return
+      setCartFeedback('Please choose an order type before continuing.')
+      return null
     }
 
     if (orderFlow.type === 'in-house' && !orderFlow.table) {
-      setCartFeedback('Please select a table number before paying.')
-      return
+      setCartFeedback('Please select a table number before continuing.')
+      return null
     }
 
     if (!Number.isFinite(cartTotalValue) || cartTotalValue <= 0) {
       setCartFeedback('Unable to calculate your total. Please review the cart and try again.')
-      return
+      return null
     }
 
     const itemsMissingPrice = cartItems.some((item) => !Number.isFinite(Number(item.product?.price)))
     if (itemsMissingPrice) {
-      setCartFeedback('Some items are missing prices. Please update them before paying online.')
-      return
-    }
-
-    const endpoint = buildBackendUrl('/api/create-payment-session')
-    if (!endpoint) {
-      setCartFeedback('Payment service is unavailable. Please try again later.')
-      return
+      setCartFeedback('Some items are missing prices. Please update them before submitting the order.')
+      return null
     }
 
     const milkLabelLookup = MILK_OPTIONS.reduce((accumulator, option) => {
@@ -1130,6 +1134,35 @@ function App() {
       order_type: orderFlow.type === 'in-house' ? 'inhouse' : orderFlow.type,
       quantity: cartItemCount,
       amount: Number(cartTotalValue.toFixed(2))
+    }
+
+    const itemDetails = cartItems.map((item) => ({
+      product_key: item.productKey || getProductKey(item.product),
+      name: item.product?.name || 'Drink',
+      quantity: item.quantity,
+      milk: item.milk ? milkLabelLookup[item.milk] || item.milk : null,
+      notes: item.product?.description || ''
+    }))
+
+    return {
+      payload,
+      productSummary,
+      itemDetails
+    }
+  }
+
+  const handleOrderPayNow = async () => {
+    if (isProcessingPayment) return
+
+    const submission = buildOrderSubmission()
+    if (!submission) return
+
+    const { payload } = submission
+
+    const endpoint = buildBackendUrl('/api/create-payment-session')
+    if (!endpoint) {
+      setCartFeedback('Payment service is unavailable. Please try again later.')
+      return
     }
 
     try {
@@ -1190,6 +1223,39 @@ function App() {
       const fallbackMessage = 'Could not start the payment.'
       const detailMessage = error instanceof Error && error.message ? ` ${error.message}` : ' Please try again.'
       setCartFeedback(`${fallbackMessage}${detailMessage}`)
+    } finally {
+      setIsProcessingPayment(false)
+    }
+  }
+
+  const handleSubmitKitchenOrder = async () => {
+    if (isProcessingPayment) return
+
+    const submission = buildOrderSubmission()
+    if (!submission) return
+
+    const { payload, itemDetails } = submission
+
+    try {
+      setIsProcessingPayment(true)
+
+      const kitchenPayload = {
+        ...payload,
+        table_number: orderFlow.type === 'in-house' ? orderFlow.table : null,
+        source: 'sub_menu',
+        items: itemDetails,
+        submitted_at: new Date().toISOString()
+      }
+
+      console.log('[SubMenu] Prepared kitchen order payload:', kitchenPayload)
+      await new Promise((resolve) => setTimeout(resolve, 250))
+
+      setCartItems([])
+      closeCartModal()
+      setCartFeedback('Order sent to the kitchen. Thank you!')
+    } catch (error) {
+      console.error('Failed to submit kitchen order', error)
+      setCartFeedback('Could not send the order. Please try again.')
     } finally {
       setIsProcessingPayment(false)
     }
@@ -1624,6 +1690,8 @@ function App() {
 
   const isStandaloneView = Boolean(standaloneProductId)
   const isMenuPage = currentPath === '/menu'
+  const isSubMenuPage = currentPath === '/sub-menu'
+  const isMenuInterface = isMenuPage || isSubMenuPage
   const isPaymentSuccessPage = currentPath === '/payment-success'
   const paymentSuccessOrderNumber = latestOrderReference?.orderNumber || ''
   const paymentSuccessWhatsappUrl = buildWhatsappConfirmationUrl(paymentSuccessOrderNumber)
@@ -1653,10 +1721,10 @@ function App() {
     return undefined
   }, [isPaymentSuccessPage])
   useEffect(() => {
-    if (!isMenuPage) {
+    if (!isMenuInterface) {
       closeExpandedProductCard()
     }
-  }, [isMenuPage])
+  }, [isMenuInterface])
 
   useEffect(() => {
     if (!expandedProductKey) return undefined
@@ -1698,9 +1766,9 @@ function App() {
     return null
   }, [expandedProductKey, menuSections])
 
-  const shouldShowProductModal = Boolean(selectedProduct && !isMenuPage)
+  const shouldShowProductModal = Boolean(selectedProduct && !isMenuInterface)
 
-  const cartFlowModal = !isMenuPage || !cartFlow.step || !cartFlow.product
+  const cartFlowModal = !isMenuInterface || !cartFlow.step || !cartFlow.product
     ? null
     : (
         <div
@@ -1824,7 +1892,7 @@ function App() {
         </div>
       )
 
-  const cartSummaryModal = !isMenuPage || !cartModalOpen
+  const cartSummaryModal = !isMenuInterface || !cartModalOpen
     ? null
     : (
         <div
@@ -2023,7 +2091,7 @@ function App() {
                     <div className="space-y-3">
                       <p className="text-sm text-gray-600">
                         {orderFlow.type === 'in-house' && orderFlow.table
-                          ? `Table ${orderFlow.table} selected for in-house service.`
+                          ? `Table ${orderFlow.table} selected${isSubMenuPage ? '. Review items and send to the kitchen when ready.' : ' for in-house service.'}`
                           : 'Takeaway order selected.'}
                       </p>
                       <div className="flex flex-wrap gap-2">
@@ -2036,23 +2104,33 @@ function App() {
                             Change table
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          onClick={handleOrderFlowBackToType}
-                          className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
-                        >
-                          Change order type
-                        </button>
+                        {!isSubMenuPage ? (
+                          <button
+                            type="button"
+                            onClick={handleOrderFlowBackToType}
+                            className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
+                          >
+                            Change order type
+                          </button>
+                        ) : null}
                       </div>
                       <button
                         type="button"
-                        onClick={handleOrderPayNow}
+                        onClick={isSubMenuPage ? handleSubmitKitchenOrder : handleOrderPayNow}
                         disabled={isProcessingPayment}
-                        className={`w-full px-4 py-3 rounded bg-[#F2B705] text-[#23314F] text-sm font-semibold hover:opacity-90 ${
+                        className={`w-full px-4 py-3 rounded ${
+                          isSubMenuPage ? 'bg-[#23314F] text-white' : 'bg-[#F2B705] text-[#23314F]'
+                        } text-sm font-semibold hover:opacity-90 ${
                           isProcessingPayment ? 'opacity-70 cursor-not-allowed' : ''
                         }`}
                       >
-                        {isProcessingPayment ? 'Processing...' : 'Pay Now'}
+                        {isProcessingPayment
+                          ? isSubMenuPage
+                            ? 'Sending...'
+                            : 'Processing...'
+                          : isSubMenuPage
+                            ? 'Send to Kitchen'
+                            : 'Pay Now'}
                       </button>
                     </div>
                   ) : null}
@@ -2182,7 +2260,7 @@ function App() {
               <div className="w-full flex justify-center">
                 <img src="/images/assets/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
               </div>
-            ) : isMenuPage ? (
+            ) : isMenuInterface ? (
               <>
                 <button
                   type="button"
@@ -2192,7 +2270,7 @@ function App() {
                   <img src="/images/assets/logo.png" alt="DopaBeans logo" className="h-10 w-auto" />
                 </button>
                 <span className="flex-1 text-center text-base sm:text-lg font-semibold uppercase tracking-wide text-[#23314F]">
-                  Menu
+                  {isSubMenuPage ? 'Cafe Menu' : 'Menu'}
                 </span>
                 <button
                   type="button"
@@ -2222,6 +2300,14 @@ function App() {
                     data-ignore-auto-contrast
                   >
                     Menu
+                  </button>
+                  <button
+                    onClick={() => navigateToPath('/sub-menu')}
+                    className={`hover:opacity-80 text-[#23314F] ${isSubMenuPage ? 'underline decoration-2 decoration-[#23314F]' : ''}`}
+                    aria-current={isSubMenuPage ? 'page' : undefined}
+                    data-ignore-auto-contrast
+                  >
+                    Cafe Menu
                   </button>
                   <button
                     onClick={() => handleSectionNavigation('vision')}
@@ -2261,7 +2347,7 @@ function App() {
             )}
           </div>
         </div>
-        {isMenuPage && menuCategoryDescriptors.length > 0 ? (
+        {isMenuInterface && menuCategoryDescriptors.length > 0 ? (
           <div className="px-2 sm:px-10 mt-4 mb-20 sm:mb-24">
             <div className="w-full max-w-[96rem] mx-auto bg-white bg-opacity-95 rounded shadow-2xl border border-white/40">
               <div className="px-3 sm:px-6 py-3 overflow-hidden">
@@ -2281,7 +2367,7 @@ function App() {
             </div>
           </div>
         ) : null}
-        {!isMenuPage && menuOpen && (
+        {!isMenuInterface && menuOpen && (
           <div className="md:hidden bg-[#23314F] shadow px-4 pb-4 space-y-3 text-center">
             <button
               onClick={handleNavigateMenuPage}
@@ -2290,6 +2376,13 @@ function App() {
             >
               Menu
             </button>
+            <button
+              onClick={() => navigateToPath('/sub-menu')}
+              className={`block w-full text-white ${isSubMenuPage ? 'font-semibold underline' : ''}`}
+              aria-current={isSubMenuPage ? 'page' : undefined}
+            >
+              Cafe Menu
+            </button>
             <button onClick={() => handleSectionNavigation('vision')} className="block w-full text-white">Vision</button>
             <button onClick={() => handleSectionNavigation('contact')} className="block w-full text-white">Contact</button>
             <button onClick={() => handleSectionNavigation('about')} className="block w-full text-white">About Us</button>
@@ -2297,9 +2390,20 @@ function App() {
         )}
       </header>
 
-      {isMenuPage ? (
-        <main className="pt-48 sm:pt-56 pb-20 px-3 sm:px-8">
-          <div className="w-full max-w-[96rem] mx-auto space-y-10">
+      {isMenuInterface ? (
+        <main
+          className={`${isSubMenuPage ? 'pt-40 sm:pt-48' : 'pt-48 sm:pt-56'} pb-20 px-3 sm:px-8`}
+        >
+          <div className="w-full max-w-[96rem] mx-auto space-y-6 sm:space-y-8">
+            {isSubMenuPage ? (
+              <div className="bg-[#23314F] text-white rounded-lg px-4 py-3 shadow">
+                <p className="text-sm sm:text-base font-semibold">In-cafe ordering</p>
+                <p className="text-xs sm:text-sm text-white/80">
+                  Choose your drinks, assign a table, and send the order to the kitchen. No payment is collected
+                  on this device.
+                </p>
+              </div>
+            ) : null}
             {cartFeedback ? (
               <div className="text-sm sm:text-base text-green-800 bg-green-100 border border-green-200 rounded p-4 shadow">
                 {cartFeedback}
@@ -2400,7 +2504,7 @@ function App() {
                 })
               : null}
           </div>
-          {isMenuPage && cartItems.length > 0 ? (
+          {isMenuInterface && cartItems.length > 0 ? (
             <button
               type="button"
               onClick={openCartModal}
