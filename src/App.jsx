@@ -1042,10 +1042,6 @@ function App() {
 
   const startOrderFlow = () => {
     if (cartItems.length === 0) return
-    if (isSubMenuPage) {
-      setOrderFlow({ step: 'table', type: 'in-house', table: null })
-      return
-    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
@@ -1063,10 +1059,6 @@ function App() {
   }
 
   const handleOrderFlowBackToType = () => {
-    if (isSubMenuPage) {
-      setOrderFlow({ step: 'table', type: 'in-house', table: null })
-      return
-    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
@@ -2104,15 +2096,13 @@ function App() {
                             Change table
                           </button>
                         ) : null}
-                        {!isSubMenuPage ? (
-                          <button
-                            type="button"
-                            onClick={handleOrderFlowBackToType}
-                            className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
-                          >
-                            Change order type
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleOrderFlowBackToType}
+                          className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
+                        >
+                          Change order type
+                        </button>
                       </div>
                       <button
                         type="button"
