@@ -2550,13 +2550,16 @@ function App() {
                     {expandedProductDetails.price != null ? <CurrencyIcon className="w-5 h-5" /> : null}
                     {expandedProductDetails.displayPrice}
                   </div>
-                  {expandedProductDetails.description ? (
-                    <p id="expanded-product-description" className="text-sm sm:text-base text-gray-700 leading-relaxed">
-                      {expandedProductDetails.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
-                  )}
+                  <div className="space-y-1">
+                    {expandedProductDetails.description ? (
+                      <p id="expanded-product-description" className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                        {expandedProductDetails.description}
+                      </p>
+                    ) : (
+                      <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
+                    )}
+                    <p className="text-xs text-gray-500 italic">*Actual product may vary from the photo.</p>
+                  </div>
                   {!expandedProductDetails.isInStock && expandedProductDetails.normalizedAvailability ? (
                     <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                       {expandedProductDetails.availability}
