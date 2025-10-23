@@ -201,10 +201,40 @@ const buildWhatsappConfirmationUrl = (orderNumber) => {
 const MILK_OPTIONS = [
   { value: 'normal', label: 'Normal Milk' },
   { value: 'coconut', label: 'Coconut Milk' },
-  { value: 'almond', label: 'Almond Milk' },
   { value: 'oat', label: 'Oat Milk' },
   { value: 'none', label: 'No Milk' }
 ]
+
+const MILK_LABELS = {
+  normal: 'Normal Milk',
+  coconut: 'Coconut Milk',
+  almond: 'Almond Milk',
+  oat: 'Oat Milk',
+  none: 'No Milk'
+}
+
+const BEAN_OPTIONS = [
+  { value: 'house_blend', label: 'House Blend' },
+  { value: 'single_origin', label: 'Single Origin' }
+]
+
+const BEAN_LABELS = BEAN_OPTIONS.reduce((accumulator, option) => {
+  accumulator[option.value] = option.label
+  return accumulator
+}, {})
+
+const getMilkLabel = (value) => {
+  if (!value) return null
+  return MILK_LABELS[value] || value
+}
+
+const getBeanLabel = (value) => {
+  if (!value) return null
+  return BEAN_LABELS[value] || value
+}
+
+const DEFAULT_MILK_OPTION = MILK_OPTIONS[0]?.value ?? "normal"
+const DEFAULT_BEAN_OPTION = BEAN_OPTIONS[0]?.value ?? null
 
 const NON_CUSTOMIZABLE_PRODUCTS = new Set([
   'special_karkade',
@@ -225,10 +255,21 @@ const getDefaultMilkValue = (options) => {
 }
 
 const MilkSelector = ({ options, value, onChange }) => {
-  const [selectedMilk, setSelectedMilk] = useState(() => value ?? getDefaultMilkValue(options))
+  const [selectedMilk, setSelectedMilk] = useState(() => {
+    const defaultValue = getDefaultMilkValue(options)
+    if (value && options.some((option) => option.value === value)) {
+      return value
+    }
+    return defaultValue
+  })
 
   useEffect(() => {
-    setSelectedMilk(value ?? getDefaultMilkValue(options))
+    const defaultValue = getDefaultMilkValue(options)
+    if (value && options.some((option) => option.value === value)) {
+      setSelectedMilk(value)
+    } else {
+      setSelectedMilk(defaultValue)
+    }
   }, [value, options])
 
   const handleSelection = (optionValue) => {
@@ -242,6 +283,59 @@ const MilkSelector = ({ options, value, onChange }) => {
     <div className="space-y-3">
       {options.map((option) => {
         const isSelected = selectedMilk === option.value
+        const buttonClasses = isSelected
+          ? 'bg-gray-200 border-gray-300'
+          : 'bg-white border-gray-200 hover:bg-gray-100'
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => handleSelection(option.value)}
+            className={`w-full flex items-center justify-between rounded border px-4 py-3 font-medium transition-colors text-black ${buttonClasses}`}
+          >
+            <span>{option.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const getDefaultBeanValue = (options) => {
+  const first = options?.[0]
+  return first ? first.value : null
+}
+
+const BeanSelector = ({ options, value, onChange }) => {
+  const [selectedBean, setSelectedBean] = useState(() => {
+    const defaultValue = getDefaultBeanValue(options)
+    if (value && options.some((option) => option.value === value)) {
+      return value
+    }
+    return defaultValue
+  })
+
+  useEffect(() => {
+    const defaultValue = getDefaultBeanValue(options)
+    if (value && options.some((option) => option.value === value)) {
+      setSelectedBean(value)
+    } else {
+      setSelectedBean(defaultValue)
+    }
+  }, [value, options])
+
+  const handleSelection = (optionValue) => {
+    setSelectedBean(optionValue)
+    if (typeof onChange === 'function') {
+      onChange(optionValue)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {options.map((option) => {
+        const isSelected = selectedBean === option.value
         const buttonClasses = isSelected
           ? 'bg-gray-200 border-gray-300'
           : 'bg-white border-gray-200 hover:bg-gray-100'
@@ -348,6 +442,10 @@ const getProductSlugValue = (product) => createProductSlug(product?.slug || prod
 const isProductCustomizable = (product) => {
   if (!product) return true
 
+  if (typeof product.milkCustomizable === 'boolean') {
+    return product.milkCustomizable
+  }
+
   const explicitFlag = interpretYesNoValue(product.isCustomizable ?? product.is_customizabe)
   if (explicitFlag !== null) {
     return explicitFlag
@@ -358,6 +456,40 @@ const isProductCustomizable = (product) => {
   return !(NON_CUSTOMIZABLE_PRODUCTS.has(slug) || NON_CUSTOMIZABLE_PRODUCTS.has(key))
 }
 
+const isProductMilkCustomizable = (product) => {
+  if (!product) return false
+
+  if (typeof product.milkCustomizable === 'boolean') {
+    return product.milkCustomizable
+  }
+
+  const explicitFlag = interpretYesNoValue(
+    product.isMilkCustomizable ?? product.is_milk_customizabe ?? product.is_milk_customizable
+  )
+  if (explicitFlag !== null) {
+    return explicitFlag
+  }
+
+  return isProductCustomizable(product)
+}
+
+const isProductBeanCustomizable = (product) => {
+  if (!product) return false
+
+  if (typeof product.beanCustomizable === 'boolean') {
+    return product.beanCustomizable
+  }
+
+  const explicitFlag = interpretYesNoValue(
+    product.isBeanCustomizable ?? product.is_bean_customizabe ?? product.is_bean_customizable
+  )
+  if (explicitFlag !== null) {
+    return explicitFlag
+  }
+
+  return false
+}
+
 const sanitizeStoredCartItem = (entry) => {
   if (!entry || typeof entry !== 'object') return null
   const product = entry.product && typeof entry.product === 'object' ? entry.product : null
@@ -366,6 +498,7 @@ const sanitizeStoredCartItem = (entry) => {
   const quantityValue = Number(entry.quantity)
   const quantity = Number.isFinite(quantityValue) && quantityValue > 0 ? Math.min(20, Math.floor(quantityValue)) : 1
   const milk = typeof entry.milk === 'string' ? entry.milk : entry.milk === null ? null : null
+  const bean = typeof entry.bean === 'string' ? entry.bean : entry.bean === null ? null : null
   const productKey =
     entry.productKey ||
     (typeof entry.entryKey === 'string' ? entry.entryKey.split('::')[0] : '') ||
@@ -373,7 +506,30 @@ const sanitizeStoredCartItem = (entry) => {
 
   if (!productKey) return null
 
-  const entryKey = entry.entryKey || (milk ? `${productKey}::${milk}` : productKey)
+  let inferredMilk = milk
+  let inferredBean = bean
+  if ((!inferredMilk || !inferredBean) && typeof entry.entryKey === 'string') {
+    const parts = entry.entryKey.split('::').slice(1)
+    for (const part of parts) {
+      if (!inferredMilk && part.startsWith('milk-')) {
+        inferredMilk = part.slice(5)
+      } else if (!inferredBean && part.startsWith('bean-')) {
+        inferredBean = part.slice(5)
+      } else if (!inferredMilk) {
+        inferredMilk = part
+      }
+    }
+  }
+
+  const entryKeyParts = [productKey]
+  if (inferredMilk) entryKeyParts.push(`milk-${inferredMilk}`)
+  if (inferredBean) entryKeyParts.push(`bean-${inferredBean}`)
+
+  const entryKey =
+    entry.entryKey && entry.entryKey.includes('::')
+      ? entry.entryKey
+      : entryKeyParts.join('::')
+
   const idSource = entry.id || entry.entryKey || entry.productKey || productKey
   const id =
     typeof idSource === 'string' && idSource.length > 0
@@ -386,7 +542,8 @@ const sanitizeStoredCartItem = (entry) => {
     productKey,
     entryKey,
     quantity,
-    milk
+    milk: inferredMilk ?? null,
+    bean: inferredBean ?? null
   }
 }
 
@@ -516,7 +673,7 @@ const serializeCartItemsForStorage = (items, savedAt) => {
   const timestamp = Number.isFinite(savedAt) ? savedAt : Date.now()
 
   return {
-    version: 2,
+    version: 3,
     savedAt: timestamp,
     items: items.map((item) => ({
       id: item.id,
@@ -524,7 +681,8 @@ const serializeCartItemsForStorage = (items, savedAt) => {
       productKey: item.productKey,
       entryKey: item.entryKey,
       quantity: item.quantity,
-      milk: item.milk ?? null
+      milk: item.milk ?? null,
+      bean: item.bean ?? null
     }))
   }
 }
@@ -684,8 +842,15 @@ const buildMenuSections = (csvRows) => {
     const slug = createProductSlug(item.product_slug || item.product_name || item.product_id)
     const customizableValue =
       interpretYesNoValue(item.is_customizabe) ?? interpretYesNoValue(item.is_customizable)
+    const milkCustomizableValue =
+      interpretYesNoValue(item.is_milk_customizabe) ?? interpretYesNoValue(item.is_milk_customizable)
+    const beanCustomizableValue =
+      interpretYesNoValue(item.is_bean_customizabe) ?? interpretYesNoValue(item.is_bean_customizable)
     const isCustomizable =
       customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
+    const isMilkCustomizable =
+      milkCustomizableValue !== null ? milkCustomizableValue : isCustomizable
+    const isBeanCustomizable = beanCustomizableValue !== null ? beanCustomizableValue : false
     const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
 
     sections.get(category).push({
@@ -698,7 +863,9 @@ const buildMenuSections = (csvRows) => {
       link: item.product_link ? item.product_link.trim() : '',
       availability: availabilityLabel,
       isAvailable,
-      isCustomizable,
+      isCustomizable: isMilkCustomizable,
+      milkCustomizable: isMilkCustomizable,
+      beanCustomizable: isBeanCustomizable,
       slug
     })
   })
@@ -805,8 +972,10 @@ function App() {
     step: null,
     product: null,
     quantity: 1,
-    milk: 'normal',
-    requiresMilk: true,
+    milk: DEFAULT_MILK_OPTION,
+    bean: DEFAULT_BEAN_OPTION,
+    requiresMilk: false,
+    requiresBean: false,
     mode: 'add',
     originalEntryKey: null,
     originalEntryId: null
@@ -1028,8 +1197,10 @@ function App() {
       step: null,
       product: null,
       quantity: 1,
-      milk: 'normal',
-      requiresMilk: true,
+      milk: DEFAULT_MILK_OPTION,
+      bean: DEFAULT_BEAN_OPTION,
+      requiresMilk: false,
+      requiresBean: false,
       mode: 'add',
       originalEntryKey: null,
       originalEntryId: null
@@ -1093,17 +1264,16 @@ function App() {
       return null
     }
 
-    const milkLabelLookup = MILK_OPTIONS.reduce((accumulator, option) => {
-      accumulator[option.value] = option.label
-      return accumulator
-    }, {})
-
     let productSummary = cartItems
       .map((item) => {
         const name = item.product?.name || 'Drink'
-        const milkLabel = item.milk ? milkLabelLookup[item.milk] : null
-        const milkSuffix = milkLabel ? ` (${milkLabel})` : ''
-        return `${name} x${item.quantity}${milkSuffix}`
+        const milkLabel = getMilkLabel(item.milk)
+        const beanLabel = getBeanLabel(item.bean)
+        const descriptors = []
+        if (milkLabel) descriptors.push(milkLabel)
+        if (beanLabel) descriptors.push(`Bean: ${beanLabel}`)
+        const descriptorSuffix = descriptors.length ? ` (${descriptors.join(', ')})` : ''
+        return `${name} x${item.quantity}${descriptorSuffix}`
       })
       .join('; ')
 
@@ -1115,15 +1285,25 @@ function App() {
     let milkType = 'none'
     if (uniqueMilks.size === 1) {
       const [singleMilk] = Array.from(uniqueMilks)
-      milkType = milkLabelLookup[singleMilk] || singleMilk
+      milkType = getMilkLabel(singleMilk) || singleMilk
     } else if (uniqueMilks.size > 1) {
       milkType = 'mixed'
+    }
+
+    const uniqueBeans = new Set(cartItems.map((item) => item.bean).filter(Boolean))
+    let beanType = 'none'
+    if (uniqueBeans.size === 1) {
+      const [singleBean] = Array.from(uniqueBeans)
+      beanType = getBeanLabel(singleBean) || singleBean
+    } else if (uniqueBeans.size > 1) {
+      beanType = 'mixed'
     }
 
     const payload = {
       product: productSummary,
       milk_type: milkType,
       order_type: orderFlow.type === 'in-house' ? 'inhouse' : orderFlow.type,
+      bean_type: beanType,
       quantity: cartItemCount,
       amount: Number(cartTotalValue.toFixed(2))
     }
@@ -1132,7 +1312,10 @@ function App() {
       product_key: item.productKey || getProductKey(item.product),
       name: item.product?.name || 'Drink',
       quantity: item.quantity,
-      milk: item.milk ? milkLabelLookup[item.milk] || item.milk : null,
+      milk: getMilkLabel(item.milk),
+      milk_value: item.milk ?? null,
+      bean: getBeanLabel(item.bean),
+      bean_value: item.bean ?? null,
       notes: item.product?.description || ''
     }))
 
@@ -1269,18 +1452,27 @@ function App() {
 
     const key = getProductKey(product)
     const existingItem = cartItems.find((item) => (item.productKey || getProductKey(item.product)) === key)
-    const customizable = isProductCustomizable(product)
+    const milkCustomizable = isProductMilkCustomizable(product)
+    const beanCustomizable = isProductBeanCustomizable(product)
     const isEditFlow = Boolean(options.fromCartEdit)
     const entryContext = options.entry || null
     const existingQuantity = entryContext ? Number(entryContext.quantity) || 0 : existingItem ? Number(existingItem.quantity) || 0 : 0
     const initialQuantity = isEditFlow ? Math.max(existingQuantity, 1) : 1
-    const defaultMilk = cartFlow.milk || MILK_OPTIONS[0].value
-    const initialMilk = customizable
+    const defaultMilk = cartFlow.milk ?? DEFAULT_MILK_OPTION
+    const defaultBean = cartFlow.bean ?? DEFAULT_BEAN_OPTION
+    const initialMilk = milkCustomizable
       ? entryContext && entryContext.milk != null
         ? entryContext.milk
         : existingItem && existingItem.milk != null
           ? existingItem.milk
           : defaultMilk
+      : null
+    const initialBean = beanCustomizable
+      ? entryContext && entryContext.bean != null
+        ? entryContext.bean
+        : existingItem && existingItem.bean != null
+          ? existingItem.bean
+          : defaultBean
       : null
     const mode = options.fromCartEdit ? 'update' : 'add'
 
@@ -1288,8 +1480,10 @@ function App() {
       step: 'quantity',
       product,
       quantity: initialQuantity,
-      milk: customizable ? initialMilk : null,
-      requiresMilk: customizable,
+      milk: milkCustomizable ? initialMilk : null,
+      bean: beanCustomizable ? initialBean : null,
+      requiresMilk: milkCustomizable,
+      requiresBean: beanCustomizable,
       mode,
       originalEntryKey: entryContext?.entryKey || (isEditFlow ? (existingItem?.entryKey || key) : null),
       originalEntryId: entryContext?.id || (isEditFlow ? existingItem?.id || null : null)
@@ -1311,19 +1505,56 @@ function App() {
     setCartFlow((prev) => ({ ...prev, quantity: Math.max(1, Math.min(20, prev.quantity - 1)) }))
   }
 
-  const advanceToMilkSelection = () => {
-    setCartFlow((prev) => {
-      if (!prev.requiresMilk) return prev
-      return { ...prev, step: 'milk' }
-    })
-  }
-
   const backToQuantityStep = () => {
     setCartFlow((prev) => ({ ...prev, step: 'quantity' }))
   }
 
+  const goToMilkStep = () => {
+    setCartFlow((prev) => ({ ...prev, step: 'milk' }))
+  }
+
+  const goToBeanStep = () => {
+    setCartFlow((prev) => ({ ...prev, step: 'bean' }))
+  }
+
+  const proceedFromQuantityStep = () => {
+    if (cartFlow.requiresMilk) {
+      goToMilkStep()
+      return
+    }
+    if (cartFlow.requiresBean) {
+      goToBeanStep()
+      return
+    }
+    finalizeCartItem()
+  }
+
+  const proceedFromMilkStep = () => {
+    if (cartFlow.requiresBean) {
+      goToBeanStep()
+      return
+    }
+    finalizeCartItem()
+  }
+
+  const proceedFromBeanStep = () => {
+    finalizeCartItem()
+  }
+
+  const backToQuantityFromBean = () => {
+    if (cartFlow.requiresMilk) {
+      goToMilkStep()
+      return
+    }
+    backToQuantityStep()
+  }
+
   const selectMilkOption = (value) => {
     setCartFlow((prev) => ({ ...prev, milk: value }))
+  }
+
+  const selectBeanOption = (value) => {
+    setCartFlow((prev) => ({ ...prev, bean: value }))
   }
 
   const removeCartItem = (itemId) => {
@@ -1343,7 +1574,9 @@ function App() {
     const {
       product,
       requiresMilk,
+      requiresBean,
       milk: selectedMilk,
+      bean: selectedBean,
       quantity,
       mode,
       originalEntryKey: flowOriginalEntryKey,
@@ -1352,10 +1585,14 @@ function App() {
 
     if (!product) return
 
-    const milk = requiresMilk ? selectedMilk || 'normal' : null
+    const milk = requiresMilk ? selectedMilk || DEFAULT_MILK_OPTION : null
+    const bean = requiresBean ? selectedBean || DEFAULT_BEAN_OPTION : null
     const targetKey = getProductKey(product)
-    const entryKey = requiresMilk ? `${targetKey}::${milk}` : targetKey
-    const originalEntryKey = flowOriginalEntryKey || targetKey
+    const entryKeyParts = [targetKey]
+    if (milk) entryKeyParts.push(`milk-${milk}`)
+    if (bean) entryKeyParts.push(`bean-${bean}`)
+    const entryKey = entryKeyParts.join('::')
+    const originalEntryKey = flowOriginalEntryKey || entryKeyParts[0]
     const resolvedOriginalEntryId = originalEntryId || null
 
     setCartItems((currentItems) => {
@@ -1367,9 +1604,22 @@ function App() {
         return true
       })
 
-      const existingIndex = cleanedItems.findIndex(
-        (item) => (item.entryKey || item.productKey || getProductKey(item.product)) === entryKey
-      )
+      const existingIndex = cleanedItems.findIndex((item) => {
+        const itemKey = item.entryKey || item.productKey || getProductKey(item.product)
+        if (itemKey === entryKey) {
+          return true
+        }
+        if (!bean && milk && (itemKey === `${targetKey}::${milk}` || itemKey === `${targetKey}::milk-${milk}`)) {
+          return true
+        }
+        if (!milk && bean && (itemKey === `${targetKey}::bean-${bean}`)) {
+          return true
+        }
+        if (!milk && !bean && itemKey === targetKey) {
+          return true
+        }
+        return false
+      })
 
       if (existingIndex !== -1) {
         const updated = [...cleanedItems]
@@ -1385,7 +1635,8 @@ function App() {
           productKey: targetKey,
           entryKey,
           quantity: newQuantity,
-          milk
+          milk,
+          bean
         }
         return updated
       }
@@ -1401,7 +1652,8 @@ function App() {
           productKey: targetKey,
           entryKey,
           quantity,
-          milk
+          milk,
+          bean
         }
       ]
     })
@@ -1760,6 +2012,143 @@ function App() {
 
   const shouldShowProductModal = Boolean(selectedProduct && !isMenuInterface)
 
+  const renderCartFlowContent = () => {
+    if (!cartFlow.product || !cartFlow.step) {
+      return null
+    }
+
+    if (cartFlow.step === 'quantity') {
+      return (
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
+              Select Quantity
+            </h2>
+            <p className="text-sm text-gray-600">
+              How many {cartFlow.product?.name} would you like?
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={decrementCartQuantity}
+              className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
+              aria-label="Decrease quantity"
+            >
+              -
+            </button>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={cartFlow.quantity}
+              onChange={(event) => setCartFlowQuantity(event.target.value)}
+              className="w-20 text-center border border-gray-300 rounded py-2"
+            />
+            <button
+              type="button"
+              onClick={incrementCartQuantity}
+              className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={closeCartFlow}
+              className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={proceedFromQuantityStep}
+              className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+            >
+              {cartFlow.requiresMilk || cartFlow.requiresBean
+                ? 'Next'
+                : cartFlow.mode === 'update'
+                  ? 'Save'
+                  : 'Add to cart'}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    if (cartFlow.step === 'milk') {
+      return (
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
+              Choose Your Milk
+            </h2>
+            <p className="text-sm text-gray-600">
+              Select your milk of choice for {cartFlow.product?.name}.
+            </p>
+          </div>
+          <MilkSelector options={MILK_OPTIONS} value={cartFlow.milk} onChange={selectMilkOption} />
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={backToQuantityStep}
+              className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={proceedFromMilkStep}
+              className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+            >
+              {cartFlow.requiresBean
+                ? 'Next'
+                : cartFlow.mode === 'update'
+                  ? 'Save'
+                  : 'Add to cart'}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    if (cartFlow.step === 'bean') {
+      return (
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
+              Choose Your Beans
+            </h2>
+            <p className="text-sm text-gray-600">
+              Select the bean preference for {cartFlow.product?.name}.
+            </p>
+          </div>
+          <BeanSelector options={BEAN_OPTIONS} value={cartFlow.bean} onChange={selectBeanOption} />
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={backToQuantityFromBean}
+              className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={proceedFromBeanStep}
+              className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
+            >
+              {cartFlow.mode === 'update' ? 'Save' : 'Add to cart'}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
   const cartFlowModal = !isMenuInterface || !cartFlow.step || !cartFlow.product
     ? null
     : (
@@ -1792,93 +2181,7 @@ function App() {
               </svg>
             </button>
             <div className="bg-white p-6 rounded shadow-2xl space-y-6">
-              {cartFlow.step === 'quantity' ? (
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
-                      Select Quantity
-                    </h2>
-                    <p className="text-sm text-gray-600">
-                      How many {cartFlow.product?.name} would you like?
-                    </p>
-                    {!cartFlow.requiresMilk ? (
-                      <p className="text-xs text-gray-500">
-                        This item will be added without milk customization.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center justify-center gap-4">
-                    <button
-                      type="button"
-                      onClick={decrementCartQuantity}
-                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
-                      aria-label="Decrease quantity"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={cartFlow.quantity}
-                      onChange={(event) => setCartFlowQuantity(event.target.value)}
-                      className="w-20 text-center border border-gray-300 rounded py-2"
-                    />
-                    <button
-                      type="button"
-                      onClick={incrementCartQuantity}
-                      className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-lg font-semibold text-gray-700 hover:bg-gray-300"
-                      aria-label="Increase quantity"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={closeCartFlow}
-                      className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cartFlow.requiresMilk ? advanceToMilkSelection : finalizeCartItem}
-                      className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
-                    >
-                      {cartFlow.requiresMilk ? 'Next' : cartFlow.mode === 'update' ? 'Save' : 'Add to cart'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <h2 id="cart-flow-title" className="text-xl font-semibold text-[#23314F]">
-                      Choose Your Milk
-                    </h2>
-                    <p className="text-sm text-gray-600">
-                      Select your milk of choice for {cartFlow.product?.name}.
-                    </p>
-                  </div>
-                  <MilkSelector options={MILK_OPTIONS} value={cartFlow.milk} onChange={selectMilkOption} />
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={backToQuantityStep}
-                      className="px-4 py-2 rounded border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100"
-                    >
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={finalizeCartItem}
-                      className="px-4 py-2 rounded bg-[#23314F] text-white text-sm font-semibold hover:opacity-90"
-                    >
-                      {cartFlow.mode === 'update' ? 'Save' : 'Add to cart'}
-                    </button>
-                  </div>
-                </div>
-              )}
+              {renderCartFlowContent()}
             </div>
           </div>
         </div>
@@ -1938,10 +2241,13 @@ function App() {
               ) : (
                 <ul className="space-y-4 max-h-80 overflow-y-auto pr-1">
                   {cartItems.map((item) => {
-                    const milkOption = MILK_OPTIONS.find((option) => option.value === item.milk)
-                    const milkLabel = milkOption?.label || null
+                    const milkLabel = getMilkLabel(item.milk)
+                    const beanLabel = getBeanLabel(item.bean)
                     const productName = item.product?.name || 'Selected Drink'
-                    const displayName = milkLabel ? `${productName} with ${milkLabel}` : productName
+                    const detailParts = []
+                    if (milkLabel) detailParts.push(milkLabel)
+                    if (beanLabel) detailParts.push(`Bean: ${beanLabel}`)
+                    const displayName = productName
                     const unitPrice = Number(item.product?.price)
                     const hasUnitPrice = Number.isFinite(unitPrice)
                     const lineTotal = hasUnitPrice ? (unitPrice * item.quantity).toFixed(2) : null
@@ -1958,7 +2264,12 @@ function App() {
                               className="w-12 h-12 rounded object-cover"
                               loading="lazy"
                             />
-                            <p className="font-medium leading-snug text-left">{displayName}</p>
+                            <div className="text-left">
+                              <p className="font-medium leading-snug">{displayName}</p>
+                              {detailParts.length > 0 ? (
+                                <p className="text-xs text-gray-500">{detailParts.join(' • ')}</p>
+                              ) : null}
+                            </div>
                           </div>
                           <span className="text-sm font-semibold text-gray-700">x{item.quantity}</span>
                         </div>
