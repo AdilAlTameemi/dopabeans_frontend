@@ -840,12 +840,19 @@ const buildMenuSections = (csvRows) => {
       availabilityLabel = isAvailable ? 'In Stock' : 'Sold Out'
     }
     const slug = createProductSlug(item.product_slug || item.product_name || item.product_id)
+    const sanitizeValue = (raw) => {
+      const value = String(raw || '').trim().toLowerCase()
+      if (!value) return null
+      if (value === 'n/a') return null
+      return value
+    }
+
     const customizableValue =
-      interpretYesNoValue(item.is_customizabe) ?? interpretYesNoValue(item.is_customizable)
+      interpretYesNoValue(sanitizeValue(item.is_customizabe)) ?? interpretYesNoValue(item.is_customizable)
     const milkCustomizableValue =
-      interpretYesNoValue(item.is_milk_customizabe) ?? interpretYesNoValue(item.is_milk_customizable)
+      interpretYesNoValue(sanitizeValue(item.is_milk_customizabe)) ?? interpretYesNoValue(item.is_milk_customizable)
     const beanCustomizableValue =
-      interpretYesNoValue(item.is_bean_customizabe) ?? interpretYesNoValue(item.is_bean_customizable)
+      interpretYesNoValue(sanitizeValue(item.is_bean_customizabe)) ?? interpretYesNoValue(item.is_bean_customizable)
     const isCustomizable =
       customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
     const isMilkCustomizable =
@@ -2332,7 +2339,7 @@ function App() {
                   ) : null}
                   {orderFlow.step === 'type' ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-gray-600">Is this an in-house or a takeaway order?</p>
+                      <p className="text-base sm:text-lg font-semibold text-[#23314F] bg-[#F2F5FA] px-3 py-2 rounded">Is this an in-house or a takeaway order?</p>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -2603,14 +2610,6 @@ function App() {
                     Menu
                   </button>
                   <button
-                    onClick={() => navigateToPath('/sub-menu')}
-                    className={`hover:opacity-80 text-[#23314F] ${isSubMenuPage ? 'underline decoration-2 decoration-[#23314F]' : ''}`}
-                    aria-current={isSubMenuPage ? 'page' : undefined}
-                    data-ignore-auto-contrast
-                  >
-                    Cafe Menu
-                  </button>
-                  <button
                     onClick={() => handleSectionNavigation('vision')}
                     className="hover:opacity-80 text-[#23314F]"
                     data-ignore-auto-contrast
@@ -2676,13 +2675,6 @@ function App() {
               aria-current={isMenuPage ? 'page' : undefined}
             >
               Menu
-            </button>
-            <button
-              onClick={() => navigateToPath('/sub-menu')}
-              className={`block w-full text-white ${isSubMenuPage ? 'font-semibold underline' : ''}`}
-              aria-current={isSubMenuPage ? 'page' : undefined}
-            >
-              Cafe Menu
             </button>
             <button onClick={() => handleSectionNavigation('vision')} className="block w-full text-white">Vision</button>
             <button onClick={() => handleSectionNavigation('contact')} className="block w-full text-white">Contact</button>
