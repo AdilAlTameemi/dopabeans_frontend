@@ -1,7 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-const MENU_SHEET_CSV_URL =
-  'https://docs.google.com/spreadsheets/d/10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8/export?format=csv'
+const GOOGLE_SHEET_ID = '10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8'
+const SHEET_GVIZ_BASE_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq`
+const SHEET_NAMES = {
+  menu: 'menu',
+  categories: 'categories',
+  modifiers: 'modifiers'
+}
+const buildSheetCsvUrl = (sheetName) =>
+  `${SHEET_GVIZ_BASE_URL}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
+const SHEET_URLS = {
+  menu: buildSheetCsvUrl(SHEET_NAMES.menu),
+  categories: buildSheetCsvUrl(SHEET_NAMES.categories),
+  modifiers: buildSheetCsvUrl(SHEET_NAMES.modifiers)
+}
 const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v1'
 const MENU_CACHE_TTL_MS = 1000 * 60 * 30
 const DEFAULT_PRODUCT_IMAGE = '/images/products/coming-soon.jpg'
@@ -103,8 +115,8 @@ const PRODUCT_IMAGE_MAP = {
   chemex_hot: '/images/products/Chemex-Hot.jpg',
   pdct460: '/images/products/Chemex-Cold.jpg',
   chemex_cold: '/images/products/Chemex-Cold.jpg',
-  pdct470: '/images/products/cold-brew.jpg',
-  cold_brew: '/images/products/cold-brew.jpg',
+  pdct470: '/images/products/cold-brew.png',
+  cold_brew: '/images/products/cold-brew.png',
   pdct480: '/images/products/Banana-Frappe.jpg',
   banana_frappe: '/images/products/Banana-Frappe.jpg',
   pdct490: '/images/products/Pistachio-Frappe.jpg',
@@ -198,43 +210,21 @@ const buildWhatsappConfirmationUrl = (orderNumber) => {
   return `https://wa.me/${WHATSAPP_PHONE_NUMBER}?text=${encodeURIComponent(message)}`
 }
 
-const MILK_OPTIONS = [
+const FALLBACK_MILK_OPTIONS = [
   { value: 'normal', label: 'Normal Milk' },
   { value: 'coconut', label: 'Coconut Milk' },
+  { value: 'almond', label: 'Almond Milk' },
   { value: 'oat', label: 'Oat Milk' },
   { value: 'none', label: 'No Milk' }
 ]
 
-const MILK_LABELS = {
-  normal: 'Normal Milk',
-  coconut: 'Coconut Milk',
-  almond: 'Almond Milk',
-  oat: 'Oat Milk',
-  none: 'No Milk'
-}
-
-const BEAN_OPTIONS = [
+const FALLBACK_BEAN_OPTIONS = [
   { value: 'house_blend', label: 'House Blend' },
   { value: 'single_origin', label: 'Single Origin' }
 ]
 
-const BEAN_LABELS = BEAN_OPTIONS.reduce((accumulator, option) => {
-  accumulator[option.value] = option.label
-  return accumulator
-}, {})
-
-const getMilkLabel = (value) => {
-  if (!value) return null
-  return MILK_LABELS[value] || value
-}
-
-const getBeanLabel = (value) => {
-  if (!value) return null
-  return BEAN_LABELS[value] || value
-}
-
-const DEFAULT_MILK_OPTION = MILK_OPTIONS[0]?.value ?? "normal"
-const DEFAULT_BEAN_OPTION = BEAN_OPTIONS[0]?.value ?? null
+const FALLBACK_DEFAULT_MILK_OPTION = FALLBACK_MILK_OPTIONS[0]?.value ?? 'normal'
+const FALLBACK_DEFAULT_BEAN_OPTION = FALLBACK_BEAN_OPTIONS[0]?.value ?? null
 
 const NON_CUSTOMIZABLE_PRODUCTS = new Set([
   'special_karkade',
@@ -409,6 +399,7 @@ const interpretYesNoValue = (value) => {
       'n',
       'false',
       '0',
+      'n/a',
       'sold out',
       'sold_out',
       'soldout',
@@ -442,8 +433,10 @@ const getProductSlugValue = (product) => createProductSlug(product?.slug || prod
 const isProductCustomizable = (product) => {
   if (!product) return true
 
-  if (typeof product.milkCustomizable === 'boolean') {
-    return product.milkCustomizable
+  const hasMilkFlag = typeof product.milkCustomizable === 'boolean'
+  const hasBeanFlag = typeof product.beanCustomizable === 'boolean'
+  if (hasMilkFlag || hasBeanFlag) {
+    return Boolean((hasMilkFlag && product.milkCustomizable) || (hasBeanFlag && product.beanCustomizable))
   }
 
   const explicitFlag = interpretYesNoValue(product.isCustomizable ?? product.is_customizabe)
@@ -802,27 +795,36 @@ const parseCsv = (csvText) => {
   return rows
 }
 
-const buildMenuSections = (csvRows) => {
-  if (!csvRows.length) return []
+const buildMenuSections = (items, categoryDefinitions = { definitions: [], lookup: new Map() }) => {
+  if (!Array.isArray(items) || items.length === 0) return []
 
-  const [headerRow, ...dataRows] = csvRows
-  const headers = headerRow.map((header) => header.trim())
-
-  const items = dataRows
-    .filter((row) => row.some((cell) => cell && cell.trim() !== ''))
-    .map((row) =>
-      headers.reduce((acc, header, index) => {
-        acc[header] = row[index] ? row[index].trim() : ''
-        return acc
-      }, {})
-    )
-
+  const categoryLookup = categoryDefinitions?.lookup ?? new Map()
+  const categoryOrder = categoryDefinitions?.definitions ?? []
   const sections = new Map()
 
   items.forEach((item) => {
-    const category = item.product_category || 'Other'
-    if (!sections.has(category)) {
-      sections.set(category, [])
+    if (!item || typeof item !== 'object') {
+      return
+    }
+
+    const rawCategory = item.product_category || 'Other'
+    const inferredSlug = createProductSlug(rawCategory)
+    const categorySlug = inferredSlug || 'other'
+    const categoryDefinition = categoryLookup.get(categorySlug)
+    const categoryName = categoryDefinition?.name || rawCategory || 'Other'
+    let sectionSlug = categoryDefinition?.slug || categorySlug
+    if (!sectionSlug) {
+      sectionSlug = 'other'
+    }
+    const sectionKey = sectionSlug
+
+    if (!sections.has(sectionKey)) {
+      sections.set(sectionKey, {
+        category: categoryName,
+        slug: sectionSlug,
+        id: categoryDefinition?.id || null,
+        products: []
+      })
     }
 
     const priceValue = Number(item.product_price)
@@ -839,11 +841,11 @@ const buildMenuSections = (csvRows) => {
     } else {
       availabilityLabel = isAvailable ? 'In Stock' : 'Sold Out'
     }
+
     const slug = createProductSlug(item.product_slug || item.product_name || item.product_id)
     const sanitizeValue = (raw) => {
       const value = String(raw || '').trim().toLowerCase()
       if (!value) return null
-      if (value === 'n/a') return null
       return value
     }
 
@@ -853,14 +855,16 @@ const buildMenuSections = (csvRows) => {
       interpretYesNoValue(sanitizeValue(item.is_milk_customizabe)) ?? interpretYesNoValue(item.is_milk_customizable)
     const beanCustomizableValue =
       interpretYesNoValue(sanitizeValue(item.is_bean_customizabe)) ?? interpretYesNoValue(item.is_bean_customizable)
-    const isCustomizable =
+    const baseCustomizable =
       customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
     const isMilkCustomizable =
-      milkCustomizableValue !== null ? milkCustomizableValue : isCustomizable
-    const isBeanCustomizable = beanCustomizableValue !== null ? beanCustomizableValue : false
+      milkCustomizableValue !== null ? milkCustomizableValue : baseCustomizable
+    const isBeanCustomizable =
+      beanCustomizableValue !== null ? beanCustomizableValue : false
+    const isCustomizable = customizableValue !== null ? customizableValue : Boolean(isMilkCustomizable || isBeanCustomizable)
     const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
 
-    sections.get(category).push({
+    sections.get(sectionKey).products.push({
       id: item.product_id || item.product_name,
       name: item.product_name || 'Untitled Item',
       price: Number.isFinite(priceValue) ? priceValue : null,
@@ -870,17 +874,26 @@ const buildMenuSections = (csvRows) => {
       link: item.product_link ? item.product_link.trim() : '',
       availability: availabilityLabel,
       isAvailable,
-      isCustomizable: isMilkCustomizable,
-      milkCustomizable: isMilkCustomizable,
-      beanCustomizable: isBeanCustomizable,
-      slug
+      isCustomizable,
+      milkCustomizable: Boolean(isMilkCustomizable),
+      beanCustomizable: Boolean(isBeanCustomizable),
+      slug,
+      categorySlug: sectionSlug,
+      categoryId: categoryDefinition?.id || null
     })
   })
 
-  const unsortedSections = Array.from(sections.entries()).map(([category, products]) => ({
-    category,
-    products: products.sort((a, b) => {
-      if (a.price == null && b.price == null) return 0
+  const orderLookup = new Map()
+  categoryOrder.forEach((definition, index) => {
+    if (definition?.slug) {
+      orderLookup.set(definition.slug, index)
+    }
+  })
+
+  const unsortedSections = Array.from(sections.values()).map((section) => ({
+    ...section,
+    products: section.products.sort((a, b) => {
+      if (a.price == null && b.price == null) return a.name.localeCompare(b.name)
       if (a.price == null) return 1
       if (b.price == null) return -1
       return b.price - a.price
@@ -888,10 +901,135 @@ const buildMenuSections = (csvRows) => {
   }))
 
   return unsortedSections.sort((a, b) => {
-    const difference = b.products.length - a.products.length
-    if (difference !== 0) return difference
+    const indexA = orderLookup.has(a.slug) ? orderLookup.get(a.slug) : Number.POSITIVE_INFINITY
+    const indexB = orderLookup.has(b.slug) ? orderLookup.get(b.slug) : Number.POSITIVE_INFINITY
+    if (indexA !== indexB) return indexA - indexB
     return a.category.localeCompare(b.category)
   })
+}
+
+const csvRowsToObjects = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+
+  const [headerRow, ...dataRows] = rows
+  if (!headerRow) return []
+
+  const headers = headerRow.map((header) => String(header ?? '').trim())
+
+  return dataRows
+    .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+    .map((row) =>
+      headers.reduce((accumulator, header, index) => {
+        accumulator[header] = row[index] != null ? String(row[index]).trim() : ''
+        return accumulator
+      }, {})
+    )
+}
+
+const buildCategoryDefinitions = (categoryRows) => {
+  if (!Array.isArray(categoryRows) || categoryRows.length === 0) {
+    return { definitions: [], lookup: new Map() }
+  }
+
+  const definitions = []
+  const lookup = new Map()
+
+  categoryRows.forEach((row, index) => {
+    if (!row || typeof row !== 'object') return
+
+    const rawName = row.category_name || row.category || ''
+    const name = String(rawName).trim()
+    if (!name) return
+
+    const slug = createProductSlug(name) || `category-${index + 1}`
+    const id = row.category_id ? String(row.category_id).trim() || null : null
+
+    if (lookup.has(slug)) {
+      const existing = lookup.get(slug)
+      if (!existing.id && id) {
+        existing.id = id
+      }
+      return
+    }
+
+    const definition = {
+      id,
+      name,
+      slug,
+      index
+    }
+
+    definitions.push(definition)
+    lookup.set(slug, definition)
+  })
+
+  return { definitions, lookup }
+}
+
+const normalizeModifierOptions = (modifierRows) => {
+  const milkOptions = []
+  const beanOptions = []
+
+  if (Array.isArray(modifierRows)) {
+    modifierRows.forEach((row) => {
+      if (!row || typeof row !== 'object') return
+
+      const type = String(row.modifier_type || row.type || '').trim().toLowerCase()
+      const name = String(row.modifier_name || row.name || '').trim()
+      if (!type || !name) return
+
+      const rawSlug = createProductSlug(name)
+      if (!rawSlug) return
+
+      if (type === 'milk') {
+        let value = rawSlug
+        if (value.endsWith('_milk')) {
+          value = value.replace(/_milk$/, '')
+        }
+        if (value === 'no' || value === 'no_milk' || value === 'no_milk_option' || value === 'zero') {
+          value = 'none'
+        }
+        const normalizedValue = value || 'none'
+        if (!milkOptions.some((option) => option.value === normalizedValue)) {
+          milkOptions.push({
+            value: normalizedValue,
+            label: name
+          })
+        }
+        return
+      }
+
+      if (type === 'beans' || type === 'bean' || type === 'coffee' || type === 'beans_option') {
+        const normalizedValue = rawSlug
+        if (!normalizedValue) return
+        if (!beanOptions.some((option) => option.value === normalizedValue)) {
+          beanOptions.push({
+            value: normalizedValue,
+            label: name
+          })
+        }
+      }
+    })
+  }
+
+  const sanitizedMilkOptions =
+    milkOptions.length > 0
+      ? milkOptions
+      : FALLBACK_MILK_OPTIONS.map((option) => ({ ...option }))
+
+  if (!sanitizedMilkOptions.some((option) => option.value === 'none')) {
+    sanitizedMilkOptions.push({ value: 'none', label: 'No Milk' })
+  }
+
+  const sanitizedBeanOptions =
+    beanOptions.length > 0
+      ? beanOptions
+      : FALLBACK_BEAN_OPTIONS.map((option) => ({ ...option }))
+
+  return {
+    milkOptions: sanitizedMilkOptions,
+    beanOptions: sanitizedBeanOptions
+  }
 }
 
 const CurrencyIcon = ({ className = '' }) => (
@@ -975,12 +1113,14 @@ function App() {
   })
   const [pendingScrollTarget, setPendingScrollTarget] = useState(null)
   const [cartItems, setCartItems] = useState(() => initialCartSnapshotRef.current.items)
+  const [milkOptions, setMilkOptions] = useState(() => FALLBACK_MILK_OPTIONS.map((option) => ({ ...option })))
+  const [beanOptions, setBeanOptions] = useState(() => FALLBACK_BEAN_OPTIONS.map((option) => ({ ...option })))
   const [cartFlow, setCartFlow] = useState({
     step: null,
     product: null,
     quantity: 1,
-    milk: DEFAULT_MILK_OPTION,
-    bean: DEFAULT_BEAN_OPTION,
+    milk: FALLBACK_DEFAULT_MILK_OPTION,
+    bean: FALLBACK_DEFAULT_BEAN_OPTION,
     requiresMilk: false,
     requiresBean: false,
     mode: 'add',
@@ -1013,12 +1153,85 @@ function App() {
       return sum + price * item.quantity
     }, 0)
   }, [cartItems])
+  const defaultMilkOption = useMemo(
+    () => getDefaultMilkValue(milkOptions) ?? FALLBACK_DEFAULT_MILK_OPTION,
+    [milkOptions]
+  )
+  const defaultBeanOption = useMemo(
+    () => getDefaultBeanValue(beanOptions) ?? FALLBACK_DEFAULT_BEAN_OPTION,
+    [beanOptions]
+  )
+  const milkLabelMap = useMemo(() => {
+    const map = new Map()
+    const register = (option) => {
+      if (!option) return
+      const rawValue = option.value
+      const key = typeof rawValue === 'string' ? rawValue : rawValue != null ? String(rawValue) : ''
+      if (!key) return
+      const label =
+        typeof option.label === 'string' && option.label.trim().length > 0
+          ? option.label.trim()
+          : key
+      if (!map.has(key)) {
+        map.set(key, label)
+      }
+    }
+    milkOptions.forEach(register)
+    FALLBACK_MILK_OPTIONS.forEach(register)
+    return map
+  }, [milkOptions])
+  const beanLabelMap = useMemo(() => {
+    const map = new Map()
+    const register = (option) => {
+      if (!option) return
+      const rawValue = option.value
+      const key = typeof rawValue === 'string' ? rawValue : rawValue != null ? String(rawValue) : ''
+      if (!key) return
+      const label =
+        typeof option.label === 'string' && option.label.trim().length > 0
+          ? option.label.trim()
+          : key
+      if (!map.has(key)) {
+        map.set(key, label)
+      }
+    }
+    beanOptions.forEach(register)
+    FALLBACK_BEAN_OPTIONS.forEach(register)
+    return map
+  }, [beanOptions])
+  const getMilkLabel = (value) => {
+    if (!value) return null
+    const key = typeof value === 'string' ? value : String(value)
+    return milkLabelMap.get(key) || key
+  }
+  const getBeanLabel = (value) => {
+    if (!value) return null
+    const key = typeof value === 'string' ? value : String(value)
+    return beanLabelMap.get(key) || key
+  }
+  useEffect(() => {
+    setCartFlow((previous) => {
+      if (!previous) return previous
+      const milkIsValid = previous.milk && milkOptions.some((option) => option.value === previous.milk)
+      const beanIsValid = previous.bean && beanOptions.some((option) => option.value === previous.bean)
+      const nextMilk = milkIsValid ? previous.milk : defaultMilkOption
+      const nextBean = beanIsValid ? previous.bean : defaultBeanOption
+      if (nextMilk === previous.milk && nextBean === previous.bean) {
+        return previous
+      }
+      return {
+        ...previous,
+        milk: nextMilk,
+        bean: nextBean
+      }
+    })
+  }, [milkOptions, beanOptions, defaultMilkOption, defaultBeanOption])
   const menuCategoryDescriptors = useMemo(() => {
     const seen = new Set()
     return menuSections
       .filter((section) => section && Array.isArray(section.products) && section.products.length > 0)
       .map((section, index) => {
-        let slug = createProductSlug(section.category) || `category-${index + 1}`
+        let slug = section.slug || createProductSlug(section.category) || `category-${index + 1}`
         while (seen.has(slug)) {
           slug = `${slug}-${index + 1}`
         }
@@ -1204,8 +1417,8 @@ function App() {
       step: null,
       product: null,
       quantity: 1,
-      milk: DEFAULT_MILK_OPTION,
-      bean: DEFAULT_BEAN_OPTION,
+      milk: defaultMilkOption,
+      bean: defaultBeanOption,
       requiresMilk: false,
       requiresBean: false,
       mode: 'add',
@@ -1465,21 +1678,35 @@ function App() {
     const entryContext = options.entry || null
     const existingQuantity = entryContext ? Number(entryContext.quantity) || 0 : existingItem ? Number(existingItem.quantity) || 0 : 0
     const initialQuantity = isEditFlow ? Math.max(existingQuantity, 1) : 1
-    const defaultMilk = cartFlow.milk ?? DEFAULT_MILK_OPTION
-    const defaultBean = cartFlow.bean ?? DEFAULT_BEAN_OPTION
+    const currentCartMilk =
+      milkOptions.some((option) => option.value === cartFlow.milk) && cartFlow.milk
+        ? cartFlow.milk
+        : defaultMilkOption
+    const currentCartBean =
+      beanOptions.some((option) => option.value === cartFlow.bean) && cartFlow.bean
+        ? cartFlow.bean
+        : defaultBeanOption
+    const sanitizeMilkValue = (value) =>
+      value && milkOptions.some((option) => option.value === value) ? value : currentCartMilk
+    const sanitizeBeanValue = (value) =>
+      value && beanOptions.some((option) => option.value === value) ? value : currentCartBean
     const initialMilk = milkCustomizable
-      ? entryContext && entryContext.milk != null
-        ? entryContext.milk
-        : existingItem && existingItem.milk != null
-          ? existingItem.milk
-          : defaultMilk
+      ? sanitizeMilkValue(
+          entryContext && entryContext.milk != null
+            ? entryContext.milk
+            : existingItem && existingItem.milk != null
+              ? existingItem.milk
+              : currentCartMilk
+        )
       : null
     const initialBean = beanCustomizable
-      ? entryContext && entryContext.bean != null
-        ? entryContext.bean
-        : existingItem && existingItem.bean != null
-          ? existingItem.bean
-          : defaultBean
+      ? sanitizeBeanValue(
+          entryContext && entryContext.bean != null
+            ? entryContext.bean
+            : existingItem && existingItem.bean != null
+              ? existingItem.bean
+              : currentCartBean
+        )
       : null
     const mode = options.fromCartEdit ? 'update' : 'add'
 
@@ -1592,8 +1819,16 @@ function App() {
 
     if (!product) return
 
-    const milk = requiresMilk ? selectedMilk || DEFAULT_MILK_OPTION : null
-    const bean = requiresBean ? selectedBean || DEFAULT_BEAN_OPTION : null
+    const milk = requiresMilk
+      ? selectedMilk && milkOptions.some((option) => option.value === selectedMilk)
+        ? selectedMilk
+        : defaultMilkOption
+      : null
+    const bean = requiresBean
+      ? selectedBean && beanOptions.some((option) => option.value === selectedBean)
+        ? selectedBean
+        : defaultBeanOption
+      : null
     const targetKey = getProductKey(product)
     const entryKeyParts = [targetKey]
     if (milk) entryKeyParts.push(`milk-${milk}`)
@@ -1732,16 +1967,26 @@ function App() {
         if (!rawCache) return null
         const parsedCache = JSON.parse(rawCache)
         if (!parsedCache || !Array.isArray(parsedCache.sections)) return null
-        return parsedCache
+        return {
+          sections: parsedCache.sections,
+          milkOptions: Array.isArray(parsedCache.milkOptions) ? parsedCache.milkOptions : null,
+          beanOptions: Array.isArray(parsedCache.beanOptions) ? parsedCache.beanOptions : null,
+          timestamp: typeof parsedCache.timestamp === 'number' ? parsedCache.timestamp : null
+        }
       } catch (error) {
         return null
       }
     }
 
-    const saveToCache = (sections) => {
+    const saveToCache = (data) => {
       if (typeof window === 'undefined') return
       try {
-        const payload = JSON.stringify({ sections, timestamp: Date.now() })
+        const payload = JSON.stringify({
+          sections: data.sections,
+          milkOptions: data.milkOptions,
+          beanOptions: data.beanOptions,
+          timestamp: Date.now()
+        })
         window.localStorage.setItem(MENU_CACHE_STORAGE_KEY, payload)
       } catch (error) {
         // Swallow caching errors; rendering should continue
@@ -1751,7 +1996,27 @@ function App() {
     const cachedMenu = loadFromCache()
     if (cachedMenu && isMounted) {
       setMenuSections(cachedMenu.sections)
+      if (cachedMenu.milkOptions) {
+        setMilkOptions(cachedMenu.milkOptions)
+      }
+      if (cachedMenu.beanOptions) {
+        setBeanOptions(cachedMenu.beanOptions)
+      }
       setMenuStatus('success')
+    }
+
+    const fetchSheetText = async (url, label) => {
+      const response = await fetch(url, {
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`Unable to load ${label} data (${response.status})`)
+      }
+
+      return response.text()
     }
 
     const fetchMenu = async ({ background = false } = {}) => {
@@ -1761,25 +2026,47 @@ function App() {
       }
 
       try {
-        const response = await fetch(MENU_SHEET_CSV_URL, {
-          headers: {
-            'Cache-Control': 'no-cache'
-          }
-        })
+        const menuText = await fetchSheetText(SHEET_URLS.menu, 'menu')
 
-        if (!response.ok) {
-          throw new Error(`Unable to load menu data (${response.status})`)
+        let categoriesText = ''
+        try {
+          categoriesText = await fetchSheetText(SHEET_URLS.categories, 'categories')
+        } catch (error) {
+          console.warn('[Menu] Failed to load categories sheet:', error)
         }
 
-        const csvText = await response.text()
-        const rows = parseCsv(csvText)
-        const sections = buildMenuSections(rows)
+        let modifiersText = ''
+        try {
+          modifiersText = await fetchSheetText(SHEET_URLS.modifiers, 'modifiers')
+        } catch (error) {
+          console.warn('[Menu] Failed to load modifiers sheet:', error)
+        }
+
+        const menuRows = parseCsv(menuText)
+        const menuItems = csvRowsToObjects(menuRows)
+
+        const categoryRows = categoriesText ? parseCsv(categoriesText) : []
+        const categoryItems = csvRowsToObjects(categoryRows)
+        const categoryDefinitions = buildCategoryDefinitions(categoryItems)
+
+        const modifierRows = modifiersText ? parseCsv(modifiersText) : []
+        const modifierItems = csvRowsToObjects(modifierRows)
+        const { milkOptions: sheetMilkOptions, beanOptions: sheetBeanOptions } =
+          normalizeModifierOptions(modifierItems)
+
+        const sections = buildMenuSections(menuItems, categoryDefinitions)
 
         if (isMounted) {
           setMenuSections(sections)
+          setMilkOptions(sheetMilkOptions)
+          setBeanOptions(sheetBeanOptions)
           setMenuStatus('success')
           setMenuError(null)
-          saveToCache(sections)
+          saveToCache({
+            sections,
+            milkOptions: sheetMilkOptions,
+            beanOptions: sheetBeanOptions
+          })
         }
       } catch (error) {
         if (!isMounted) return
@@ -2096,7 +2383,7 @@ function App() {
               Select your milk of choice for {cartFlow.product?.name}.
             </p>
           </div>
-          <MilkSelector options={MILK_OPTIONS} value={cartFlow.milk} onChange={selectMilkOption} />
+          <MilkSelector options={milkOptions} value={cartFlow.milk} onChange={selectMilkOption} />
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -2132,7 +2419,7 @@ function App() {
               Select the bean preference for {cartFlow.product?.name}.
             </p>
           </div>
-          <BeanSelector options={BEAN_OPTIONS} value={cartFlow.bean} onChange={selectBeanOption} />
+          <BeanSelector options={beanOptions} value={cartFlow.bean} onChange={selectBeanOption} />
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
