@@ -106,6 +106,7 @@ const PRODUCT_IMAGE_MAP = {
   blue_lagoon: '/images/products/blue-lagoon-mojito.jpg',
   pdct400: '/images/products/kids-mojito.jpg',
   kinder: '/images/products/kids-mojito.jpg',
+  kinder_mojito: '/images/products/kids-mojito.jpg',
   kids_mojito: '/images/products/kids-mojito.jpg',
   pdct410: '/images/products/acai-smoothie.jpg',
   acai_smoothie: '/images/products/acai-smoothie.jpg',
@@ -163,6 +164,10 @@ const PRODUCT_IMAGE_MAP = {
   pdct650: '/images/products/normal-water.jpg',
   normal_water: '/images/products/normal-water.jpg',
   water: '/images/products/normal-water.jpg'
+}
+
+const PRODUCT_NAME_OVERRIDES = {
+  kinder_mojito: 'Kids Mojito'
 }
 
 const DEFAULT_PROD_BACKEND_URL = 'https://dopabeans-backend.onrender.com'
@@ -812,7 +817,17 @@ const buildMenuSections = (items, categoryDefinitions = { definitions: [], looku
       return
     }
 
-    const rawCategory = item.product_category || 'Other'
+    const rawName = typeof item.product_name === 'string' ? item.product_name.trim() : ''
+    if (!rawName) {
+      return
+    }
+
+    const rawCategoryValue = typeof item.product_category === 'string' ? item.product_category.trim() : ''
+    if (!rawCategoryValue || rawCategoryValue.toLowerCase() === 'other') {
+      return
+    }
+
+    const rawCategory = rawCategoryValue
     const inferredSlug = createProductSlug(rawCategory)
     const categorySlug = inferredSlug || 'other'
     const categoryDefinition = categoryLookup.get(categorySlug)
@@ -847,7 +862,7 @@ const buildMenuSections = (items, categoryDefinitions = { definitions: [], looku
       availabilityLabel = isAvailable ? 'In Stock' : 'Sold Out'
     }
 
-    const slug = createProductSlug(item.product_slug || item.product_name || item.product_id)
+    const slug = createProductSlug(item.product_slug || rawName || item.product_id)
     const sanitizeValue = (raw) => {
       const value = String(raw || '').trim().toLowerCase()
       if (!value) return null
@@ -869,9 +884,12 @@ const buildMenuSections = (items, categoryDefinitions = { definitions: [], looku
     const isCustomizable = customizableValue !== null ? customizableValue : Boolean(isMilkCustomizable || isBeanCustomizable)
     const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
 
+    const overrideName = PRODUCT_NAME_OVERRIDES[slug] || PRODUCT_NAME_OVERRIDES[(item.product_id || '').toLowerCase()]
+    const displayName = overrideName || rawName || 'Untitled Item'
+
     sections.get(sectionKey).products.push({
-      id: item.product_id || item.product_name,
-      name: item.product_name || 'Untitled Item',
+      id: item.product_id || rawName,
+      name: displayName,
       price: Number.isFinite(priceValue) ? priceValue : null,
       rawPrice: item.product_price || '',
       imageUrl: rawImageUrl,
