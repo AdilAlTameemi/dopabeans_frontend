@@ -928,12 +928,35 @@ const buildMenuSections = (items, categoryDefinitions = { definitions: [], looku
     })
   }))
 
-  return unsortedSections.sort((a, b) => {
+  const sortedSections = unsortedSections.sort((a, b) => {
     const indexA = orderLookup.has(a.slug) ? orderLookup.get(a.slug) : Number.POSITIVE_INFINITY
     const indexB = orderLookup.has(b.slug) ? orderLookup.get(b.slug) : Number.POSITIVE_INFINITY
     if (indexA !== indexB) return indexA - indexB
     return a.category.localeCompare(b.category)
   })
+
+  const BEST_SELLER_SLUGS = new Set(['dopabeans_matcha', 'cream_espresso'])
+  const bestSellerProducts = []
+
+  sortedSections.forEach((section) => {
+    section.products.forEach((product) => {
+      if (product?.slug && BEST_SELLER_SLUGS.has(product.slug)) {
+        bestSellerProducts.push(product)
+      }
+    })
+  })
+
+  if (bestSellerProducts.length > 0) {
+    const bestSellerSection = {
+      category: 'Best Seller',
+      slug: 'best-seller',
+      id: null,
+      products: bestSellerProducts
+    }
+    return [bestSellerSection, ...sortedSections]
+  }
+
+  return sortedSections
 }
 
 const csvRowsToObjects = (rows) => {
