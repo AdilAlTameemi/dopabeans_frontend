@@ -3030,8 +3030,7 @@ function App() {
               <div className="bg-[#23314F] text-white rounded-lg px-4 py-3 shadow">
                 <p className="text-sm sm:text-base font-semibold">In-cafe ordering</p>
                 <p className="text-xs sm:text-sm text-white/80">
-                  Choose your drinks, assign a table, and send the order to the kitchen. No payment is collected
-                  on this device.
+                  Choose your drinks, and send the order to the kitchen.
                 </p>
               </div>
             ) : null}
