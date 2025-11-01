@@ -1,20 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-const GOOGLE_SHEET_ID = '10LBztm1g4YhgJ_rN6ymQUJNj9QUoJPotD1ah_3kUyK8'
-const SHEET_GVIZ_BASE_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq`
-const SHEET_NAMES = {
-  menu: 'menu',
-  categories: 'categories',
-  modifiers: 'modifiers'
-}
-const buildSheetCsvUrl = (sheetName) =>
-  `${SHEET_GVIZ_BASE_URL}?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`
-const SHEET_URLS = {
-  menu: buildSheetCsvUrl(SHEET_NAMES.menu),
-  categories: buildSheetCsvUrl(SHEET_NAMES.categories),
-  modifiers: buildSheetCsvUrl(SHEET_NAMES.modifiers)
-}
-const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v1'
+const MENU_CACHE_STORAGE_KEY = 'dopabeans-menu-cache-v4'
 const MENU_CACHE_TTL_MS = 1000 * 60 * 30
 const DEFAULT_PRODUCT_IMAGE = '/images/products/coming-soon.jpg'
 const WHATSAPP_PHONE_NUMBER = '971501983844'
@@ -81,6 +67,7 @@ const PRODUCT_IMAGE_MAP = {
   hot_regular_matcha: '/images/products/hot-regular-matcha.jpg',
   pdct290: '/images/products/cold-regular-matcha.jpg',
   cold_regular_matcha: '/images/products/cold-regular-matcha.jpg',
+  regular_cold_matcha: '/images/products/cold-regular-matcha.jpg',
   cold_regula_matcha: '/images/products/cold-regular-matcha.jpg',
   pdct300: '/images/products/dopabeans-matcha.jpg',
   dopabeans: '/images/products/dopabeans-matcha.jpg',
@@ -227,15 +214,24 @@ const buildWhatsappConfirmationUrl = (orderNumber) => {
 
 const FALLBACK_MILK_OPTIONS = [
   { value: 'normal', label: 'Normal Milk' },
-  { value: 'coconut', label: 'Coconut Milk' },
-  { value: 'almond', label: 'Almond Milk' },
   { value: 'oat', label: 'Oat Milk' },
-  { value: 'none', label: 'No Milk' }
+  { value: 'coconut', label: 'Coconut Milk' }
 ]
 
 const FALLBACK_BEAN_OPTIONS = [
-  { value: 'house_blend', label: 'House Blend' },
-  { value: 'single_origin', label: 'Single Origin' }
+  { value: 'brazilian', label: 'Brazilian' },
+  { value: 'colombian', label: 'Colombian' }
+]
+
+const MILK_OPTION_BLUEPRINTS = [
+  { value: 'normal', label: 'Normal Milk', keywords: ['normal'] },
+  { value: 'oat', label: 'Oat Milk', keywords: ['oat'] },
+  { value: 'coconut', label: 'Coconut Milk', keywords: ['coconut'] }
+]
+
+const BEAN_OPTION_BLUEPRINTS = [
+  { value: 'brazilian', label: 'Brazilian', keywords: ['brazil'] },
+  { value: 'colombian', label: 'Colombian', keywords: ['colomb'] }
 ]
 
 const FALLBACK_DEFAULT_MILK_OPTION = FALLBACK_MILK_OPTIONS[0]?.value ?? 'normal'
@@ -255,8 +251,15 @@ const NON_CUSTOMIZABLE_PRODUCTS = new Set([
 ])
 
 const getDefaultMilkValue = (options) => {
+  if (!Array.isArray(options) || options.length === 0) {
+    return null
+  }
+  const flagged = options.find((option) => option?.isDefault && option?.value)
+  if (flagged) {
+    return flagged.value
+  }
   const normalOption = options?.find((option) => option.value === 'normal')
-  return normalOption?.value ?? options?.[0]?.value
+  return normalOption?.value ?? options[0]?.value ?? null
 }
 
 const MilkSelector = ({ options, value, onChange }) => {
@@ -308,7 +311,14 @@ const MilkSelector = ({ options, value, onChange }) => {
 }
 
 const getDefaultBeanValue = (options) => {
-  const first = options?.[0]
+  if (!Array.isArray(options) || options.length === 0) {
+    return null
+  }
+  const flagged = options.find((option) => option?.isDefault && option?.value)
+  if (flagged) {
+    return flagged.value
+  }
+  const first = options[0]
   return first ? first.value : null
 }
 
@@ -360,6 +370,57 @@ const BeanSelector = ({ options, value, onChange }) => {
   )
 }
 
+const hasVisibleModifiers = (modifiers) =>
+  Array.isArray(modifiers) && modifiers.some((modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0)
+
+const ModifiersList = ({ modifiers }) => {
+  const modifierItems = Array.isArray(modifiers)
+    ? modifiers.filter((modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0)
+    : []
+
+  if (modifierItems.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-3">
+      {modifierItems.map((modifier) => {
+        if (!modifier || typeof modifier !== 'object') return null
+
+        const options = Array.isArray(modifier.options) ? modifier.options : []
+        const modifierKey = modifier.id || modifier.reference || modifier.name || JSON.stringify(modifier)
+
+        return (
+          <div key={modifierKey} className="space-y-1">
+            <p className="text-sm font-semibold text-[#23314F]">
+              {modifier.name || 'Modifier'}
+              {modifier.is_required ? ' (Required)' : ''}
+            </p>
+            <ul className="list-disc list-inside text-sm text-gray-600">
+              {options.map((option) => {
+                if (!option || typeof option !== 'object') return null
+                const optionKey = option.id || `${modifierKey}-${option.name || 'option'}`
+                const optionLabel = normalizeModifierOptionLabel(option) || 'Option'
+                const priceValue = Number(option.price)
+                const hasPrice = Number.isFinite(priceValue) && priceValue > 0
+                const priceText = hasPrice ? ` (${priceValue.toFixed(2)})` : ''
+                const defaultText = option.is_default ? ' - Default' : ''
+                return (
+                  <li key={optionKey} className="text-sm text-gray-600">
+                    {optionLabel}
+                    {priceText}
+                    {defaultText}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 const createInitialOrderFlowState = () => ({
   step: 'idle',
   type: null,
@@ -375,6 +436,34 @@ const createProductSlug = (rawValue) => {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+}
+
+const buildCategoriesFromSections = (sections) => {
+  if (!Array.isArray(sections)) return []
+  const slugOccurrences = new Map()
+  const descriptors = []
+
+  sections.forEach((section, index) => {
+    if (!section || !Array.isArray(section.products) || section.products.length === 0) {
+      return
+    }
+
+    const baseName = section.category || `Category ${index + 1}`
+    const baseSlug = section.slug || createProductSlug(baseName) || `category-${index + 1}`
+    const occurrence = slugOccurrences.get(baseSlug) ?? 0
+    slugOccurrences.set(baseSlug, occurrence + 1)
+    const resolvedSlug = occurrence === 0 ? baseSlug : `${baseSlug}-${occurrence + 1}`
+
+    descriptors.push({
+      id: section.id ?? null,
+      name: baseName,
+      slug: resolvedSlug,
+      position: descriptors.length,
+      product_count: Array.isArray(section.products) ? section.products.length : 0
+    })
+  })
+
+  return descriptors
 }
 
 const interpretYesNoValue = (value) => {
@@ -467,35 +556,39 @@ const isProductCustomizable = (product) => {
 const isProductMilkCustomizable = (product) => {
   if (!product) return false
 
+  const hasMilkOptions = Array.isArray(product.milkOptions) && product.milkOptions.length > 0
+
   if (typeof product.milkCustomizable === 'boolean') {
-    return product.milkCustomizable
+    return product.milkCustomizable && hasMilkOptions
   }
 
   const explicitFlag = interpretYesNoValue(
     product.isMilkCustomizable ?? product.is_milk_customizabe ?? product.is_milk_customizable
   )
   if (explicitFlag !== null) {
-    return explicitFlag
+    return explicitFlag && hasMilkOptions
   }
 
-  return isProductCustomizable(product)
+  return hasMilkOptions && isProductCustomizable(product)
 }
 
 const isProductBeanCustomizable = (product) => {
   if (!product) return false
 
+  const hasBeanOptions = Array.isArray(product.beanOptions) && product.beanOptions.length > 0
+
   if (typeof product.beanCustomizable === 'boolean') {
-    return product.beanCustomizable
+    return product.beanCustomizable && hasBeanOptions
   }
 
   const explicitFlag = interpretYesNoValue(
     product.isBeanCustomizable ?? product.is_bean_customizabe ?? product.is_bean_customizable
   )
   if (explicitFlag !== null) {
-    return explicitFlag
+    return explicitFlag && hasBeanOptions
   }
 
-  return false
+  return hasBeanOptions
 }
 
 const sanitizeStoredCartItem = (entry) => {
@@ -695,6 +788,116 @@ const serializeCartItemsForStorage = (items, savedAt) => {
   }
 }
 
+const normalizeModifierOptionLabel = (option) => {
+  if (!option || typeof option !== 'object') return ''
+  const label = option.name || option.name_localized || option.reference || option.id
+  return label ? String(label).trim() : ''
+}
+
+const buildModifierOptionValue = (option) => {
+  if (!option || typeof option !== 'object') return null
+  if (option.id != null) {
+    const idValue = String(option.id).trim()
+    if (idValue) return idValue
+  }
+  const reference = option.reference != null ? String(option.reference).trim() : ''
+  if (reference) return reference
+  const label = normalizeModifierOptionLabel(option)
+  const slug = createProductSlug(label)
+  if (slug) return slug
+  const fallback = JSON.stringify(option)
+  return fallback || null
+}
+
+const collectOptionsForKeywords = (modifiers, keywords) => {
+  if (!Array.isArray(modifiers) || !Array.isArray(keywords) || keywords.length === 0) {
+    return []
+  }
+
+  const keywordMatches = (value) => {
+    if (!value) return false
+    const lower = String(value).toLowerCase()
+    return keywords.some((keyword) => lower.includes(keyword))
+  }
+
+  const collected = new Map()
+
+  modifiers.forEach((modifier) => {
+    if (!modifier || typeof modifier !== 'object') return
+    const nameMatches = keywordMatches(modifier.name) || keywordMatches(modifier.reference)
+    if (!nameMatches) return
+
+    const options = Array.isArray(modifier.options) ? modifier.options : []
+    options.forEach((option) => {
+      const label = normalizeModifierOptionLabel(option)
+      if (!label) return
+      const value = buildModifierOptionValue(option)
+      if (!value) return
+      if (collected.has(value)) return
+
+      const numericPrice = Number(option.price)
+      const price = Number.isFinite(numericPrice) ? numericPrice : null
+
+      collected.set(value, {
+        value,
+        label,
+        price,
+        isDefault: Boolean(option.is_default)
+      })
+    })
+  })
+
+  return Array.from(collected.values())
+}
+
+const deriveMilkOptionsFromModifiers = (modifiers) => collectOptionsForKeywords(modifiers, ['milk'])
+
+const deriveBeanOptionsFromModifiers = (modifiers) => collectOptionsForKeywords(modifiers, ['bean', 'coffee'])
+
+const condenseOptionsWithBlueprints = (options, blueprints) => {
+  if (!Array.isArray(options) || options.length === 0) {
+    return []
+  }
+
+  const normalized = options.map((option) => {
+    const label = option?.label || option?.name || option?.value || ''
+    const lower = String(label).toLowerCase()
+    const priceValue = Number(option?.price)
+    return {
+      ...option,
+      label: label || '',
+      lowerLabel: lower,
+      price: Number.isFinite(priceValue) ? priceValue : null,
+      isDefault: Boolean(option?.isDefault ?? option?.is_default)
+    }
+  })
+
+  return blueprints
+    .map((blueprint) => {
+      const match = normalized.find((option) =>
+        blueprint.keywords.some((keyword) => option.lowerLabel.includes(keyword))
+      )
+
+      if (!match) return null
+
+      return {
+        value: blueprint.value,
+        label: blueprint.label,
+        price: match.price,
+        isDefault: match.isDefault
+      }
+    })
+    .filter(Boolean)
+}
+
+const convertSelectorOptionsToModifierOptions = (options) =>
+  options.map((option) => ({
+    id: option.value,
+    name: option.label,
+    price: option.price != null ? Number(option.price) : null,
+    is_default: option.isDefault ?? false
+  }))
+
 const mapProductToDetails = (item = {}) => {
   const availabilityFlag = interpretYesNoValue(item.isAvailable ?? item.availability)
   const isInStock = availabilityFlag !== false
@@ -714,13 +917,50 @@ const mapProductToDetails = (item = {}) => {
     : 'Sold Out'
 
   const directImageUrl = item.imageUrl ? String(item.imageUrl).trim() : ''
-  const sheetImagePath =
-    directImageUrl && /^https?:\/\//i.test(directImageUrl)
-      ? directImageUrl.replace(/^https?:\/\/[^/]+/i, '')
-      : ''
+
+  const normalizedImageUrl = (() => {
+    if (!directImageUrl) return ''
+    if (/^https?:\/\//i.test(directImageUrl)) {
+      return directImageUrl
+    }
+    if (directImageUrl.startsWith('//')) {
+      return `https:${directImageUrl}`
+    }
+    if (directImageUrl.startsWith('/')) {
+      return directImageUrl
+    }
+    return `/${directImageUrl.replace(/^\/+/, '')}`
+  })()
 
   const slugSource = item.slug || item.product_slug || item.name || item.id
   const slug = createProductSlug(slugSource)
+
+  const modifiers = Array.isArray(item.modifiers) ? item.modifiers : []
+  const derivedMilkOptions = deriveMilkOptionsFromModifiers(modifiers)
+  const derivedBeanOptions = deriveBeanOptionsFromModifiers(modifiers)
+  const sourceMilkOptions = derivedMilkOptions.length > 0 ? derivedMilkOptions : Array.isArray(item.milkOptions) ? item.milkOptions : []
+  const sourceBeanOptions = derivedBeanOptions.length > 0 ? derivedBeanOptions : Array.isArray(item.beanOptions) ? item.beanOptions : []
+  const milkOptions = condenseOptionsWithBlueprints(sourceMilkOptions, MILK_OPTION_BLUEPRINTS)
+  const beanOptions = condenseOptionsWithBlueprints(sourceBeanOptions, BEAN_OPTION_BLUEPRINTS)
+  const defaultMilkOptionValue = getDefaultMilkValue(milkOptions)
+  const defaultBeanOptionValue = getDefaultBeanValue(beanOptions)
+
+  const normalizedModifiers = []
+
+  const addSyntheticModifier = (identifier, displayName, options) => {
+    if (!Array.isArray(options) || options.length === 0) {
+      return
+    }
+    normalizedModifiers.push({
+      id: `${slug || item.id || identifier}-${identifier}`,
+      name: displayName,
+      options: convertSelectorOptionsToModifierOptions(options),
+      is_required: false
+    })
+  }
+
+  addSyntheticModifier('milk', 'Types of Milk', milkOptions)
+  addSyntheticModifier('bean', 'Types of Bean', beanOptions)
 
   const imageKeys = [
     item.id ? String(item.id).toLowerCase() : null,
@@ -736,11 +976,16 @@ const mapProductToDetails = (item = {}) => {
     }
   }
 
-  const imageSrc = resolvedImage || sheetImagePath || directImageUrl || DEFAULT_PRODUCT_IMAGE
+  const imageSrc = resolvedImage || normalizedImageUrl || DEFAULT_PRODUCT_IMAGE
   const normalizedAvailability = availabilityLabel.toLowerCase()
 
   return {
     ...item,
+    modifiers: normalizedModifiers,
+    milkOptions,
+    beanOptions,
+    defaultMilkOption: defaultMilkOptionValue,
+    defaultBeanOption: defaultBeanOptionValue,
     normalizedAvailability,
     isInStock,
     displayPrice,
@@ -749,337 +994,6 @@ const mapProductToDetails = (item = {}) => {
     availability: availabilityLabel,
     isAvailable: isInStock,
     price
-  }
-}
-
-const parseCsv = (csvText) => {
-  const rows = []
-  let currentRow = []
-  let currentField = ''
-  let inQuotes = false
-
-  for (let i = 0; i < csvText.length; i += 1) {
-    const char = csvText[i]
-    const nextChar = csvText[i + 1]
-
-    if (inQuotes) {
-      if (char === '"') {
-        if (nextChar === '"') {
-          currentField += '"'
-          i += 1
-        } else {
-          inQuotes = false
-        }
-      } else {
-        currentField += char
-      }
-      continue
-    }
-
-    if (char === '"') {
-      inQuotes = true
-      continue
-    }
-
-    if (char === ',') {
-      currentRow.push(currentField)
-      currentField = ''
-      continue
-    }
-
-    if (char === '\r') {
-      continue
-    }
-
-    if (char === '\n') {
-      currentRow.push(currentField)
-      rows.push(currentRow)
-      currentRow = []
-      currentField = ''
-      continue
-    }
-
-    currentField += char
-  }
-
-  if (currentField.length > 0 || currentRow.length > 0) {
-    currentRow.push(currentField)
-    rows.push(currentRow)
-  }
-
-  return rows
-}
-
-const buildMenuSections = (items, categoryDefinitions = { definitions: [], lookup: new Map() }) => {
-  if (!Array.isArray(items) || items.length === 0) return []
-
-  const categoryLookup = categoryDefinitions?.lookup ?? new Map()
-  const categoryOrder = categoryDefinitions?.definitions ?? []
-  const sections = new Map()
-
-  items.forEach((item) => {
-    if (!item || typeof item !== 'object') {
-      return
-    }
-
-    const rawName = typeof item.product_name === 'string' ? item.product_name.trim() : ''
-    if (!rawName) {
-      return
-    }
-
-    const rawCategoryValue = typeof item.product_category === 'string' ? item.product_category.trim() : ''
-    if (!rawCategoryValue || rawCategoryValue.toLowerCase() === 'other') {
-      return
-    }
-
-    const rawCategory = rawCategoryValue
-    const inferredSlug = createProductSlug(rawCategory)
-    const categorySlug = inferredSlug || 'other'
-    const categoryDefinition = categoryLookup.get(categorySlug)
-    const categoryName = categoryDefinition?.name || rawCategory || 'Other'
-    let sectionSlug = categoryDefinition?.slug || categorySlug
-    if (!sectionSlug) {
-      sectionSlug = 'other'
-    }
-    const sectionKey = sectionSlug
-
-    if (!sections.has(sectionKey)) {
-      sections.set(sectionKey, {
-        category: categoryName,
-        slug: sectionSlug,
-        id: categoryDefinition?.id || null,
-        products: []
-      })
-    }
-
-    const priceValue = Number(item.product_price)
-    const availabilityValue =
-      interpretYesNoValue(item.is_available) ?? interpretYesNoValue(item.product_availability)
-    const isAvailable = availabilityValue !== false
-    const rawAvailability = item.product_availability ? item.product_availability.trim() : ''
-    let availabilityLabel = rawAvailability
-    if (availabilityLabel) {
-      const interpretedAvailability = interpretYesNoValue(availabilityLabel)
-      if (interpretedAvailability !== null) {
-        availabilityLabel = interpretedAvailability ? 'In Stock' : 'Sold Out'
-      }
-    } else {
-      availabilityLabel = isAvailable ? 'In Stock' : 'Sold Out'
-    }
-
-    const slug = createProductSlug(item.product_slug || rawName || item.product_id)
-    const sanitizeValue = (raw) => {
-      const value = String(raw || '').trim().toLowerCase()
-      if (!value) return null
-      return value
-    }
-
-    const customizableValue =
-      interpretYesNoValue(sanitizeValue(item.is_customizabe)) ?? interpretYesNoValue(item.is_customizable)
-    const milkCustomizableValue =
-      interpretYesNoValue(sanitizeValue(item.is_milk_customizabe)) ?? interpretYesNoValue(item.is_milk_customizable)
-    const beanCustomizableValue =
-      interpretYesNoValue(sanitizeValue(item.is_bean_customizabe)) ?? interpretYesNoValue(item.is_bean_customizable)
-    const baseCustomizable =
-      customizableValue !== null ? customizableValue : !NON_CUSTOMIZABLE_PRODUCTS.has(slug)
-    const isMilkCustomizable =
-      milkCustomizableValue !== null ? milkCustomizableValue : baseCustomizable
-    const isBeanCustomizable =
-      beanCustomizableValue !== null ? beanCustomizableValue : false
-    const isCustomizable = customizableValue !== null ? customizableValue : Boolean(isMilkCustomizable || isBeanCustomizable)
-    const rawImageUrl = item.product_image_url ? item.product_image_url.trim() : ''
-
-    const overrideName = PRODUCT_NAME_OVERRIDES[slug] || PRODUCT_NAME_OVERRIDES[(item.product_id || '').toLowerCase()]
-    const displayName = overrideName || rawName || 'Untitled Item'
-
-    sections.get(sectionKey).products.push({
-      id: item.product_id || rawName,
-      name: displayName,
-      price: Number.isFinite(priceValue) ? priceValue : null,
-      rawPrice: item.product_price || '',
-      imageUrl: rawImageUrl,
-      description: item.product_description || '',
-      link: item.product_link ? item.product_link.trim() : '',
-      availability: availabilityLabel,
-      isAvailable,
-      isCustomizable,
-      milkCustomizable: Boolean(isMilkCustomizable),
-      beanCustomizable: Boolean(isBeanCustomizable),
-      slug,
-      categorySlug: sectionSlug,
-      categoryId: categoryDefinition?.id || null
-    })
-  })
-
-  const orderLookup = new Map()
-  categoryOrder.forEach((definition, index) => {
-    if (definition?.slug) {
-      orderLookup.set(definition.slug, index)
-    }
-  })
-
-  const unsortedSections = Array.from(sections.values()).map((section) => ({
-    ...section,
-    products: section.products.sort((a, b) => {
-      if (a.price == null && b.price == null) return a.name.localeCompare(b.name)
-      if (a.price == null) return 1
-      if (b.price == null) return -1
-      return b.price - a.price
-    })
-  }))
-
-  const sortedSections = unsortedSections.sort((a, b) => {
-    const indexA = orderLookup.has(a.slug) ? orderLookup.get(a.slug) : Number.POSITIVE_INFINITY
-    const indexB = orderLookup.has(b.slug) ? orderLookup.get(b.slug) : Number.POSITIVE_INFINITY
-    if (indexA !== indexB) return indexA - indexB
-    return a.category.localeCompare(b.category)
-  })
-
-  const BEST_SELLER_SLUGS = new Set(['dopabeans_matcha', 'cream_espresso'])
-  const bestSellerProducts = []
-
-  sortedSections.forEach((section) => {
-    section.products.forEach((product) => {
-      if (product?.slug && BEST_SELLER_SLUGS.has(product.slug)) {
-        bestSellerProducts.push(product)
-      }
-    })
-  })
-
-  if (bestSellerProducts.length > 0) {
-    const bestSellerSection = {
-      category: 'Best Seller',
-      slug: 'best-seller',
-      id: null,
-      products: bestSellerProducts
-    }
-    return [bestSellerSection, ...sortedSections]
-  }
-
-  return sortedSections
-}
-
-const csvRowsToObjects = (rows) => {
-  if (!Array.isArray(rows) || rows.length === 0) return []
-
-  const [headerRow, ...dataRows] = rows
-  if (!headerRow) return []
-
-  const headers = headerRow.map((header) => String(header ?? '').trim())
-
-  return dataRows
-    .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
-    .map((row) =>
-      headers.reduce((accumulator, header, index) => {
-        accumulator[header] = row[index] != null ? String(row[index]).trim() : ''
-        return accumulator
-      }, {})
-    )
-}
-
-const buildCategoryDefinitions = (categoryRows) => {
-  if (!Array.isArray(categoryRows) || categoryRows.length === 0) {
-    return { definitions: [], lookup: new Map() }
-  }
-
-  const definitions = []
-  const lookup = new Map()
-
-  categoryRows.forEach((row, index) => {
-    if (!row || typeof row !== 'object') return
-
-    const rawName = row.category_name || row.category || ''
-    const name = String(rawName).trim()
-    if (!name) return
-
-    const slug = createProductSlug(name) || `category-${index + 1}`
-    const id = row.category_id ? String(row.category_id).trim() || null : null
-
-    if (lookup.has(slug)) {
-      const existing = lookup.get(slug)
-      if (!existing.id && id) {
-        existing.id = id
-      }
-      return
-    }
-
-    const definition = {
-      id,
-      name,
-      slug,
-      index
-    }
-
-    definitions.push(definition)
-    lookup.set(slug, definition)
-  })
-
-  return { definitions, lookup }
-}
-
-const normalizeModifierOptions = (modifierRows) => {
-  const milkOptions = []
-  const beanOptions = []
-
-  if (Array.isArray(modifierRows)) {
-    modifierRows.forEach((row) => {
-      if (!row || typeof row !== 'object') return
-
-      const type = String(row.modifier_type || row.type || '').trim().toLowerCase()
-      const name = String(row.modifier_name || row.name || '').trim()
-      if (!type || !name) return
-
-      const rawSlug = createProductSlug(name)
-      if (!rawSlug) return
-
-      if (type === 'milk') {
-        let value = rawSlug
-        if (value.endsWith('_milk')) {
-          value = value.replace(/_milk$/, '')
-        }
-        if (value === 'no' || value === 'no_milk' || value === 'no_milk_option' || value === 'zero') {
-          value = 'none'
-        }
-        const normalizedValue = value || 'none'
-        if (!milkOptions.some((option) => option.value === normalizedValue)) {
-          milkOptions.push({
-            value: normalizedValue,
-            label: name
-          })
-        }
-        return
-      }
-
-      if (type === 'beans' || type === 'bean' || type === 'coffee' || type === 'beans_option') {
-        const normalizedValue = rawSlug
-        if (!normalizedValue) return
-        if (!beanOptions.some((option) => option.value === normalizedValue)) {
-          beanOptions.push({
-            value: normalizedValue,
-            label: name
-          })
-        }
-      }
-    })
-  }
-
-  const sanitizedMilkOptions =
-    milkOptions.length > 0
-      ? milkOptions
-      : FALLBACK_MILK_OPTIONS.map((option) => ({ ...option }))
-
-  if (!sanitizedMilkOptions.some((option) => option.value === 'none')) {
-    sanitizedMilkOptions.push({ value: 'none', label: 'No Milk' })
-  }
-
-  const sanitizedBeanOptions =
-    beanOptions.length > 0
-      ? beanOptions
-      : FALLBACK_BEAN_OPTIONS.map((option) => ({ ...option }))
-
-  return {
-    milkOptions: sanitizedMilkOptions,
-    beanOptions: sanitizedBeanOptions
   }
 }
 
@@ -1176,7 +1090,9 @@ function App() {
     requiresBean: false,
     mode: 'add',
     originalEntryKey: null,
-    originalEntryId: null
+    originalEntryId: null,
+    availableMilkOptions: [],
+    availableBeanOptions: []
   })
   const [cartFeedback, setCartFeedback] = useState(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
@@ -1184,6 +1100,7 @@ function App() {
   const [orderFlow, setOrderFlow] = useState(createInitialOrderFlowState)
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuSections, setMenuSections] = useState([])
+  const [menuCategories, setMenuCategories] = useState([])
   const [menuStatus, setMenuStatus] = useState('idle')
   const [menuError, setMenuError] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -1278,22 +1195,107 @@ function App() {
     })
   }, [milkOptions, beanOptions, defaultMilkOption, defaultBeanOption])
   const menuCategoryDescriptors = useMemo(() => {
-    const seen = new Set()
-    return menuSections
-      .filter((section) => section && Array.isArray(section.products) && section.products.length > 0)
-      .map((section, index) => {
-        let slug = section.slug || createProductSlug(section.category) || `category-${index + 1}`
-        while (seen.has(slug)) {
-          slug = `${slug}-${index + 1}`
-        }
-        seen.add(slug)
-        return {
-          section,
-          category: section.category,
-          slug
-        }
+    if (!Array.isArray(menuSections) || menuSections.length === 0) {
+      return []
+    }
+
+    const sectionEntries = []
+    const slugOccurrences = new Map()
+    const sectionByBaseSlug = new Map()
+    const sectionById = new Map()
+
+    menuSections.forEach((section, index) => {
+      if (!section || !Array.isArray(section.products) || section.products.length === 0) {
+        return
+      }
+
+      const baseName = section.category || `Category ${index + 1}`
+      const baseSlug = section.slug || createProductSlug(baseName) || `category-${index + 1}`
+      const occurrence = slugOccurrences.get(baseSlug) ?? 0
+      slugOccurrences.set(baseSlug, occurrence + 1)
+      const resolvedSlug = occurrence === 0 ? baseSlug : `${baseSlug}-${occurrence + 1}`
+
+      const entry = {
+        section,
+        baseSlug,
+        slug: resolvedSlug,
+        name: baseName,
+        id: section.id ?? null
+      }
+
+      sectionEntries.push(entry)
+      if (!sectionByBaseSlug.has(baseSlug)) {
+        sectionByBaseSlug.set(baseSlug, entry)
+      }
+      if (entry.id != null && !sectionById.has(String(entry.id))) {
+        sectionById.set(String(entry.id), entry)
+      }
+    })
+
+    const descriptors = []
+    const seenSlugs = new Set()
+    const usedEntries = new Set()
+    const categoriesOrder = Array.isArray(menuCategories)
+      ? [...menuCategories].sort((a, b) => {
+          const aPos = Number.isFinite(a?.position) ? a.position : 0
+          const bPos = Number.isFinite(b?.position) ? b.position : 0
+          return aPos - bPos
+        })
+      : []
+
+    const registerEntry = (entry, nameHint) => {
+      if (!entry || usedEntries.has(entry)) return
+
+      let slug = entry.slug
+      let attempt = 2
+      while (seenSlugs.has(slug)) {
+        slug = `${entry.baseSlug}-${attempt}`
+        attempt += 1
+      }
+
+      seenSlugs.add(slug)
+      usedEntries.add(entry)
+      descriptors.push({
+        section: entry.section,
+        category: entry.section.category || nameHint || entry.name,
+        slug
       })
-  }, [menuSections])
+    }
+
+    categoriesOrder.forEach((category, index) => {
+      if (!category) return
+      const baseSlug = category.slug || createProductSlug(category.name) || `category-${index + 1}`
+      let entry = sectionByBaseSlug.get(baseSlug)
+      if (!entry && category.id != null) {
+        entry = sectionById.get(String(category.id))
+      }
+      registerEntry(entry, category.name)
+    })
+
+    sectionEntries.forEach((entry) => {
+      registerEntry(entry)
+    })
+
+    return [...descriptors].sort((a, b) => {
+      const aSlug = a?.slug || ''
+      const bSlug = b?.slug || ''
+      const aIsBestSeller = aSlug === 'best-seller'
+      const bIsBestSeller = bSlug === 'best-seller'
+      if (aIsBestSeller && !bIsBestSeller) return -1
+      if (!aIsBestSeller && bIsBestSeller) return 1
+
+      const aCount = Array.isArray(a?.section?.products) ? a.section.products.length : 0
+      const bCount = Array.isArray(b?.section?.products) ? b.section.products.length : 0
+      if (bCount !== aCount) {
+        return bCount - aCount
+      }
+      const aName = a?.category ? String(a.category).toLowerCase() : ''
+      const bName = b?.category ? String(b.category).toLowerCase() : ''
+      if (aName < bName) return -1
+      if (aName > bName) return 1
+      return 0
+    })
+  }, [menuSections, menuCategories])
 
   const clearCartExpiryTimer = () => {
     if (cartExpiryTimeoutRef.current != null) {
@@ -1474,7 +1476,9 @@ function App() {
       requiresBean: false,
       mode: 'add',
       originalEntryKey: null,
-      originalEntryId: null
+      originalEntryId: null,
+      availableMilkOptions: [],
+      availableBeanOptions: []
     }
   }
 
@@ -1721,33 +1725,57 @@ function App() {
   const startAddToCart = (product, options = {}) => {
     if (!product || product.isInStock === false) return
 
-    const key = getProductKey(product)
+    const hydratedProduct =
+      product && (Array.isArray(product.milkOptions) || Array.isArray(product.beanOptions))
+        ? product
+        : mapProductToDetails(product || {})
+
+    const key = getProductKey(hydratedProduct)
     const existingItem = cartItems.find((item) => (item.productKey || getProductKey(item.product)) === key)
-    const milkCustomizable = isProductMilkCustomizable(product)
-    const beanCustomizable = isProductBeanCustomizable(product)
+    const milkCustomizable = isProductMilkCustomizable(hydratedProduct)
+    const beanCustomizable = isProductBeanCustomizable(hydratedProduct)
     const isEditFlow = Boolean(options.fromCartEdit)
     const entryContext = options.entry || null
     const existingQuantity = entryContext ? Number(entryContext.quantity) || 0 : existingItem ? Number(existingItem.quantity) || 0 : 0
     const initialQuantity = isEditFlow ? Math.max(existingQuantity, 1) : 1
-    const currentCartMilk =
-      milkOptions.some((option) => option.value === cartFlow.milk) && cartFlow.milk
-        ? cartFlow.milk
-        : defaultMilkOption
-    const currentCartBean =
-      beanOptions.some((option) => option.value === cartFlow.bean) && cartFlow.bean
-        ? cartFlow.bean
-        : defaultBeanOption
-    const sanitizeMilkValue = (value) =>
-      value && milkOptions.some((option) => option.value === value) ? value : currentCartMilk
-    const sanitizeBeanValue = (value) =>
-      value && beanOptions.some((option) => option.value === value) ? value : currentCartBean
+    const productMilkOptions = (Array.isArray(hydratedProduct.milkOptions) && hydratedProduct.milkOptions.length > 0
+      ? hydratedProduct.milkOptions
+      : milkOptions
+    ).map((option) => ({ ...option }))
+    const productBeanOptions = (Array.isArray(hydratedProduct.beanOptions) && hydratedProduct.beanOptions.length > 0
+      ? hydratedProduct.beanOptions
+      : beanOptions
+    ).map((option) => ({ ...option }))
+
+    const optionExists = (optionsList, value) =>
+      Array.isArray(optionsList) && optionsList.some((option) => option.value === value)
+
+    const defaultProductMilk = getDefaultMilkValue(productMilkOptions) ?? hydratedProduct.defaultMilkOption ?? defaultMilkOption
+    const defaultProductBean = getDefaultBeanValue(productBeanOptions) ?? hydratedProduct.defaultBeanOption ?? defaultBeanOption
+
+    const sanitizeMilkValue = (value) => {
+      if (!milkCustomizable) return null
+      if (value && optionExists(productMilkOptions, value)) {
+        return value
+      }
+      return defaultProductMilk
+    }
+
+    const sanitizeBeanValue = (value) => {
+      if (!beanCustomizable) return null
+      if (value && optionExists(productBeanOptions, value)) {
+        return value
+      }
+      return defaultProductBean
+    }
+
     const initialMilk = milkCustomizable
       ? sanitizeMilkValue(
           entryContext && entryContext.milk != null
             ? entryContext.milk
             : existingItem && existingItem.milk != null
               ? existingItem.milk
-              : currentCartMilk
+              : hydratedProduct.defaultMilkOption ?? defaultProductMilk
         )
       : null
     const initialBean = beanCustomizable
@@ -1756,14 +1784,14 @@ function App() {
             ? entryContext.bean
             : existingItem && existingItem.bean != null
               ? existingItem.bean
-              : currentCartBean
+              : hydratedProduct.defaultBeanOption ?? defaultProductBean
         )
       : null
     const mode = options.fromCartEdit ? 'update' : 'add'
 
     setCartFlow({
       step: 'quantity',
-      product,
+      product: hydratedProduct,
       quantity: initialQuantity,
       milk: milkCustomizable ? initialMilk : null,
       bean: beanCustomizable ? initialBean : null,
@@ -1771,7 +1799,9 @@ function App() {
       requiresBean: beanCustomizable,
       mode,
       originalEntryKey: entryContext?.entryKey || (isEditFlow ? (existingItem?.entryKey || key) : null),
-      originalEntryId: entryContext?.id || (isEditFlow ? existingItem?.id || null : null)
+      originalEntryId: entryContext?.id || (isEditFlow ? existingItem?.id || null : null),
+      availableMilkOptions: productMilkOptions,
+      availableBeanOptions: productBeanOptions
     })
   }
 
@@ -1865,20 +1895,34 @@ function App() {
       quantity,
       mode,
       originalEntryKey: flowOriginalEntryKey,
-      originalEntryId
+      originalEntryId,
+      availableMilkOptions,
+      availableBeanOptions
     } = cartFlow
 
     if (!product) return
 
+    const effectiveMilkOptions =
+      Array.isArray(availableMilkOptions) && availableMilkOptions.length > 0
+        ? availableMilkOptions
+        : milkOptions
+    const effectiveBeanOptions =
+      Array.isArray(availableBeanOptions) && availableBeanOptions.length > 0
+        ? availableBeanOptions
+        : beanOptions
+
+    const fallbackMilk = getDefaultMilkValue(effectiveMilkOptions) ?? defaultMilkOption
+    const fallbackBean = getDefaultBeanValue(effectiveBeanOptions) ?? defaultBeanOption
+
     const milk = requiresMilk
-      ? selectedMilk && milkOptions.some((option) => option.value === selectedMilk)
+      ? selectedMilk && effectiveMilkOptions.some((option) => option.value === selectedMilk)
         ? selectedMilk
-        : defaultMilkOption
+        : fallbackMilk
       : null
     const bean = requiresBean
-      ? selectedBean && beanOptions.some((option) => option.value === selectedBean)
+      ? selectedBean && effectiveBeanOptions.some((option) => option.value === selectedBean)
         ? selectedBean
-        : defaultBeanOption
+        : fallbackBean
       : null
     const targetKey = getProductKey(product)
     const entryKeyParts = [targetKey]
@@ -2020,6 +2064,7 @@ function App() {
         if (!parsedCache || !Array.isArray(parsedCache.sections)) return null
         return {
           sections: parsedCache.sections,
+          categories: Array.isArray(parsedCache.categories) ? parsedCache.categories : null,
           milkOptions: Array.isArray(parsedCache.milkOptions) ? parsedCache.milkOptions : null,
           beanOptions: Array.isArray(parsedCache.beanOptions) ? parsedCache.beanOptions : null,
           timestamp: typeof parsedCache.timestamp === 'number' ? parsedCache.timestamp : null
@@ -2034,6 +2079,7 @@ function App() {
       try {
         const payload = JSON.stringify({
           sections: data.sections,
+          categories: data.categories,
           milkOptions: data.milkOptions,
           beanOptions: data.beanOptions,
           timestamp: Date.now()
@@ -2047,6 +2093,9 @@ function App() {
     const cachedMenu = loadFromCache()
     if (cachedMenu && isMounted) {
       setMenuSections(cachedMenu.sections)
+      if (cachedMenu.categories) {
+        setMenuCategories(cachedMenu.categories)
+      }
       if (cachedMenu.milkOptions) {
         setMilkOptions(cachedMenu.milkOptions)
       }
@@ -2056,20 +2105,6 @@ function App() {
       setMenuStatus('success')
     }
 
-    const fetchSheetText = async (url, label) => {
-      const response = await fetch(url, {
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`Unable to load ${label} data (${response.status})`)
-      }
-
-      return response.text()
-    }
-
     const fetchMenu = async ({ background = false } = {}) => {
       if (!background) {
         setMenuStatus(cachedMenu ? 'success' : 'loading')
@@ -2077,46 +2112,56 @@ function App() {
       }
 
       try {
-        const menuText = await fetchSheetText(SHEET_URLS.menu, 'menu')
+        const response = await fetch(buildBackendUrl('/api/menu'), {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
 
-        let categoriesText = ''
-        try {
-          categoriesText = await fetchSheetText(SHEET_URLS.categories, 'categories')
-        } catch (error) {
-          console.warn('[Menu] Failed to load categories sheet:', error)
+        if (!response.ok) {
+          throw new Error(`Unable to load menu data (${response.status})`)
         }
 
-        let modifiersText = ''
-        try {
-          modifiersText = await fetchSheetText(SHEET_URLS.modifiers, 'modifiers')
-        } catch (error) {
-          console.warn('[Menu] Failed to load modifiers sheet:', error)
-        }
+        const payload = await response.json()
 
-        const menuRows = parseCsv(menuText)
-        const menuItems = csvRowsToObjects(menuRows)
+        const receivedSections = Array.isArray(payload.sections) ? payload.sections : []
+        const receivedCategories = Array.isArray(payload.categories) ? payload.categories : null
+        const receivedMilkOptions = Array.isArray(payload.milk_options) ? payload.milk_options : null
+        const receivedBeanOptions = Array.isArray(payload.bean_options) ? payload.bean_options : null
 
-        const categoryRows = categoriesText ? parseCsv(categoriesText) : []
-        const categoryItems = csvRowsToObjects(categoryRows)
-        const categoryDefinitions = buildCategoryDefinitions(categoryItems)
+        const finalMilkOptions =
+          receivedMilkOptions && receivedMilkOptions.length > 0
+            ? receivedMilkOptions.map((option) => ({ ...option }))
+            : FALLBACK_MILK_OPTIONS.map((option) => ({ ...option }))
 
-        const modifierRows = modifiersText ? parseCsv(modifiersText) : []
-        const modifierItems = csvRowsToObjects(modifierRows)
-        const { milkOptions: sheetMilkOptions, beanOptions: sheetBeanOptions } =
-          normalizeModifierOptions(modifierItems)
+        const finalCategories =
+          receivedCategories && receivedCategories.length > 0
+            ? receivedCategories.map((category, index) => ({
+                ...category,
+                position:
+                  typeof category.position === 'number' && Number.isFinite(category.position)
+                    ? category.position
+                    : index
+              }))
+            : buildCategoriesFromSections(receivedSections)
 
-        const sections = buildMenuSections(menuItems, categoryDefinitions)
+        const finalBeanOptions =
+          receivedBeanOptions && receivedBeanOptions.length > 0
+            ? receivedBeanOptions.map((option) => ({ ...option }))
+            : FALLBACK_BEAN_OPTIONS.map((option) => ({ ...option }))
 
         if (isMounted) {
-          setMenuSections(sections)
-          setMilkOptions(sheetMilkOptions)
-          setBeanOptions(sheetBeanOptions)
+          setMenuSections(receivedSections)
+          setMenuCategories(finalCategories)
+          setMilkOptions(finalMilkOptions)
+          setBeanOptions(finalBeanOptions)
           setMenuStatus('success')
           setMenuError(null)
           saveToCache({
-            sections,
-            milkOptions: sheetMilkOptions,
-            beanOptions: sheetBeanOptions
+            sections: receivedSections,
+            categories: finalCategories,
+            milkOptions: finalMilkOptions,
+            beanOptions: finalBeanOptions
           })
         }
       } catch (error) {
@@ -2124,9 +2169,10 @@ function App() {
 
         if (!background || !cachedMenu) {
           setMenuSections([])
+          setMenuCategories([])
           setMenuStatus('error')
         }
-        setMenuError(error.message)
+        setMenuError(error instanceof Error ? error.message : 'Failed to load menu data')
       }
     }
 
@@ -2362,6 +2408,15 @@ function App() {
       return null
     }
 
+    const effectiveMilkOptions =
+      Array.isArray(cartFlow.availableMilkOptions) && cartFlow.availableMilkOptions.length > 0
+        ? cartFlow.availableMilkOptions
+        : milkOptions
+    const effectiveBeanOptions =
+      Array.isArray(cartFlow.availableBeanOptions) && cartFlow.availableBeanOptions.length > 0
+        ? cartFlow.availableBeanOptions
+        : beanOptions
+
     if (cartFlow.step === 'quantity') {
       return (
         <div className="space-y-6">
@@ -2434,7 +2489,7 @@ function App() {
               Select your milk of choice for {cartFlow.product?.name}.
             </p>
           </div>
-          <MilkSelector options={milkOptions} value={cartFlow.milk} onChange={selectMilkOption} />
+          <MilkSelector options={effectiveMilkOptions} value={cartFlow.milk} onChange={selectMilkOption} />
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -2470,7 +2525,7 @@ function App() {
               Select the bean preference for {cartFlow.product?.name}.
             </p>
           </div>
-          <BeanSelector options={beanOptions} value={cartFlow.bean} onChange={selectBeanOption} />
+          <BeanSelector options={effectiveBeanOptions} value={cartFlow.bean} onChange={selectBeanOption} />
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -2582,7 +2637,7 @@ function App() {
                 </button>
               </div>
               {cartItems.length === 0 ? (
-                <p className="text-sm text-gray-600">Your cart is empty. Start by adding a product.</p>
+                <p className="text-sm text-gray-600">Your cart is empty. Start by adding products.</p>
               ) : (
                 <ul className="space-y-4 max-h-80 overflow-y-auto pr-1">
                   {cartItems.map((item) => {
@@ -3072,6 +3127,12 @@ function App() {
                         {section.products.map((item) => {
                           const productDetails = mapProductToDetails(item)
                           const { displayPrice, imageSrc, isInStock, normalizedAvailability, price } = productDetails
+                          const modifierList = Array.isArray(productDetails.modifiers)
+                            ? productDetails.modifiers.filter(
+                                (modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0
+                              )
+                            : []
+                          const modifierCount = modifierList.length
                           const productKey = getProductKey(productDetails) || productDetails.slug || item.id || item.name
                           const isAvailable = isInStock
                           const showCurrencyIcon = price != null
@@ -3109,6 +3170,11 @@ function App() {
                                   {showCurrencyIcon ? <CurrencyIcon className="w-4 h-4" /> : null}
                                   {displayPrice}
                                 </span>
+                                {modifierCount > 0 ? (
+                                  <p className="text-xs text-gray-500">
+                                    {`${modifierCount} modifier${modifierCount > 1 ? 's' : ''} available`}
+                                  </p>
+                                ) : null}
                                 {!isAvailable && normalizedAvailability ? (
                                   <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                                     {productDetails.availability}
@@ -3200,6 +3266,12 @@ function App() {
                     )}
                     <p className="text-xs text-gray-500 italic">*Actual product may vary from the photo.</p>
                   </div>
+                  {hasVisibleModifiers(expandedProductDetails.modifiers) ? (
+                    <div className="space-y-3 pt-2">
+                      <h4 className="text-sm font-semibold text-[#23314F]">Modifiers</h4>
+                      <ModifiersList modifiers={expandedProductDetails.modifiers} />
+                    </div>
+                  ) : null}
                   {!expandedProductDetails.isInStock && expandedProductDetails.normalizedAvailability ? (
                     <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                       {expandedProductDetails.availability}
@@ -3311,6 +3383,12 @@ function App() {
                       {section.products.map((item) => {
                         const productDetails = mapProductToDetails(item)
                         const { displayPrice, imageSrc, isInStock, normalizedAvailability, price } = productDetails
+                        const modifierList = Array.isArray(productDetails.modifiers)
+                          ? productDetails.modifiers.filter(
+                              (modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0
+                            )
+                          : []
+                        const modifierCount = modifierList.length
                         const productKey = getProductKey(productDetails) || productDetails.slug || item.id || item.name
                         const showCurrencyIcon = price != null
 
@@ -3345,6 +3423,11 @@ function App() {
                                 {showCurrencyIcon ? <CurrencyIcon className="w-4 h-4" /> : null}
                                 {displayPrice}
                               </span>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {modifierCount > 0
+                                  ? `${modifierCount} modifier${modifierCount > 1 ? 's' : ''} available`
+                                  : 'No modifiers'}
+                              </p>
                               {!isInStock && normalizedAvailability && (
                                 <span className="mt-1 inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                                   {productDetails.availability}
@@ -3459,6 +3542,12 @@ function App() {
                 ) : (
                   <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
                 )}
+                {hasVisibleModifiers(selectedProduct?.modifiers) ? (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-sm font-semibold text-[#23314F]">Modifiers</h4>
+                    <ModifiersList modifiers={selectedProduct?.modifiers} />
+                  </div>
+                ) : null}
                 {selectedProduct?.availability && selectedProduct.availability.toLowerCase() !== 'in stock' && (
                   <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                     {selectedProduct.availability}
