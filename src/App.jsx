@@ -945,7 +945,36 @@ const mapProductToDetails = (item = {}) => {
   const defaultMilkOptionValue = getDefaultMilkValue(milkOptions)
   const defaultBeanOptionValue = getDefaultBeanValue(beanOptions)
 
-  const normalizedModifiers = []
+  const normalizeOptions = (options = []) =>
+    options
+      .filter((option) => option && typeof option === 'object')
+      .map((option, index) => {
+        const numericPrice = Number(option.price)
+        const numericSortOrder = Number(option.sort_order)
+        return {
+          id: option.id ?? `${slug || item.id || 'modifier'}-option-${index}`,
+          name: option.name ?? option.name_localized ?? 'Option',
+          price: Number.isFinite(numericPrice) ? numericPrice : null,
+          is_default: Boolean(option.is_default ?? option.isDefault),
+          sort_order: Number.isFinite(numericSortOrder) ? numericSortOrder : null
+        }
+      })
+      .filter((option) => option.name && option.name.trim().length > 0)
+
+  const normalizedModifiers = Array.isArray(modifiers)
+    ? modifiers
+        .filter((modifier) => modifier && typeof modifier === 'object')
+        .map((modifier, index) => {
+          const options = normalizeOptions(modifier.options)
+          return {
+            id: modifier.id ?? `${slug || item.id || 'modifier'}-${index}`,
+            name: modifier.name ?? modifier.name_localized ?? 'Modifier',
+            is_required: Boolean(modifier.is_required),
+            options
+          }
+        })
+        .filter((modifier) => Array.isArray(modifier.options) && modifier.options.length > 0)
+    : []
 
   const addSyntheticModifier = (identifier, displayName, options) => {
     if (!Array.isArray(options) || options.length === 0) {
@@ -959,8 +988,10 @@ const mapProductToDetails = (item = {}) => {
     })
   }
 
-  addSyntheticModifier('milk', 'Types of Milk', milkOptions)
-  addSyntheticModifier('bean', 'Types of Bean', beanOptions)
+  if (normalizedModifiers.length === 0) {
+    addSyntheticModifier('milk', 'Types of Milk', milkOptions)
+    addSyntheticModifier('bean', 'Types of Bean', beanOptions)
+  }
 
   const imageKeys = [
     item.id ? String(item.id).toLowerCase() : null,
