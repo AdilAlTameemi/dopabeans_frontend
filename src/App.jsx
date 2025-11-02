@@ -1683,26 +1683,80 @@ function App() {
 
       const normalizedKitchenOrderType = isSubMenuPage ? 'inhouse' : payload.order_type
       const tableNumberForKitchen =
-        normalizedKitchenOrderType === 'inhouse' ? (orderFlow.type === 'in-house' ? orderFlow.table : null) : null
+        normalizedKitchenOrderType === 'inhouse'
+          ? orderFlow.type === 'in-house' && orderFlow.table
+            ? orderFlow.table
+            : isSubMenuPage
+              ? 'Takeaway'
+              : null
+          : null
 
-      const kitchenPayload = {
-        ...payload,
-        order_type: normalizedKitchenOrderType,
-        table_number: tableNumberForKitchen,
-        source: 'sub_menu',
-        items: itemDetails,
-        submitted_at: new Date().toISOString()
+      const kitchenItems = cartItems.map((item, index) => {
+        const product = item.product || {}
+        const detail = itemDetails[index] || {}
+        const rawUnitPrice = Number(product.price)
+        const unitPrice = Number.isFinite(rawUnitPrice) ? Number(rawUnitPrice.toFixed(2)) : null
+        const quantityValue = Number(item.quantity)
+        const quantity = Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1
+        const milkLabel = getMilkLabel(item.milk) || detail.milk || null
+        const beanLabel = getBeanLabel(item.bean) || detail.bean || null
+
+        return {
+          product_id: product.id ?? product.productId ?? null,
+          product_reference: product.productId ?? product.reference ?? null,
+          name: product.name ?? detail.name ?? 'Drink',
+          quantity,
+          unit_price: unitPrice,
+          milk_label: milkLabel,
+          milk_value: item.milk ?? detail.milk_value ?? null,
+          bean_label: beanLabel,
+          bean_value: item.bean ?? detail.bean_value ?? null
+        }
+      })
+
+      const kitchenRequestPayload = {
+        order: {
+          ...payload,
+          order_type: normalizedKitchenOrderType,
+          table_number: tableNumberForKitchen,
+          source: 'sub_menu'
+        },
+        items: kitchenItems
       }
 
-      console.log('[SubMenu] Prepared kitchen order payload:', kitchenPayload)
-      await new Promise((resolve) => setTimeout(resolve, 250))
+      const endpoint = buildBackendUrl('/api/submenu-orders')
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(kitchenRequestPayload)
+      })
+
+      if (!response.ok) {
+        let message = `Could not send the order (status ${response.status}).`
+        try {
+          const errorPayload = await response.json()
+          if (errorPayload && typeof errorPayload === 'object') {
+            const detailMessage =
+              errorPayload.detail ||
+              errorPayload.message ||
+              (Array.isArray(errorPayload.errors) && errorPayload.errors.length > 0 ? errorPayload.errors[0] : null)
+            if (detailMessage) {
+              message = `${message} ${detailMessage}`
+            }
+          }
+        } catch {
+          // Ignore body parsing issues.
+        }
+        throw new Error(message)
+      }
 
       setCartItems([])
       closeCartModal()
       setCartFeedback('Order sent to the kitchen. Thank you!')
     } catch (error) {
       console.error('Failed to submit kitchen order', error)
-      setCartFeedback('Could not send the order. Please try again.')
+      const detailMessage = error instanceof Error && error.message ? ` ${error.message}` : ' Please try again.'
+      setCartFeedback(`Could not send the order.${detailMessage}`)
     } finally {
       setIsProcessingPayment(false)
     }
