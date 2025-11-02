@@ -1681,9 +1681,14 @@ function App() {
     try {
       setIsProcessingPayment(true)
 
+      const normalizedKitchenOrderType = isSubMenuPage ? 'inhouse' : payload.order_type
+      const tableNumberForKitchen =
+        normalizedKitchenOrderType === 'inhouse' ? (orderFlow.type === 'in-house' ? orderFlow.table : null) : null
+
       const kitchenPayload = {
         ...payload,
-        table_number: orderFlow.type === 'in-house' ? orderFlow.table : null,
+        order_type: normalizedKitchenOrderType,
+        table_number: tableNumberForKitchen,
         source: 'sub_menu',
         items: itemDetails,
         submitted_at: new Date().toISOString()
