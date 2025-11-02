@@ -370,57 +370,6 @@ const BeanSelector = ({ options, value, onChange }) => {
   )
 }
 
-const hasVisibleModifiers = (modifiers) =>
-  Array.isArray(modifiers) && modifiers.some((modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0)
-
-const ModifiersList = ({ modifiers }) => {
-  const modifierItems = Array.isArray(modifiers)
-    ? modifiers.filter((modifier) => Array.isArray(modifier?.options) && modifier.options.length > 0)
-    : []
-
-  if (modifierItems.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="space-y-3">
-      {modifierItems.map((modifier) => {
-        if (!modifier || typeof modifier !== 'object') return null
-
-        const options = Array.isArray(modifier.options) ? modifier.options : []
-        const modifierKey = modifier.id || modifier.reference || modifier.name || JSON.stringify(modifier)
-
-        return (
-          <div key={modifierKey} className="space-y-1">
-            <p className="text-sm font-semibold text-[#23314F]">
-              {modifier.name || 'Modifier'}
-              {modifier.is_required ? ' (Required)' : ''}
-            </p>
-            <ul className="list-disc list-inside text-sm text-gray-600">
-              {options.map((option) => {
-                if (!option || typeof option !== 'object') return null
-                const optionKey = option.id || `${modifierKey}-${option.name || 'option'}`
-                const optionLabel = normalizeModifierOptionLabel(option) || 'Option'
-                const priceValue = Number(option.price)
-                const hasPrice = Number.isFinite(priceValue) && priceValue > 0
-                const priceText = hasPrice ? ` (${priceValue.toFixed(2)})` : ''
-                const defaultText = option.is_default ? ' - Default' : ''
-                return (
-                  <li key={optionKey} className="text-sm text-gray-600">
-                    {optionLabel}
-                    {priceText}
-                    {defaultText}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 const createInitialOrderFlowState = () => ({
   step: 'idle',
   type: null,
@@ -1519,10 +1468,18 @@ function App() {
 
   const startOrderFlow = () => {
     if (cartItems.length === 0) return
+    if (isSubMenuPage) {
+      setOrderFlow({ step: 'ready', type: 'takeaway', table: null })
+      return
+    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
   const handleSelectOrderType = (type) => {
+    if (isSubMenuPage && type === 'in-house') {
+      setOrderFlow({ step: 'ready', type: 'takeaway', table: null })
+      return
+    }
     if (type === 'in-house') {
       setOrderFlow({ step: 'table', type, table: null })
       return
@@ -1536,6 +1493,10 @@ function App() {
   }
 
   const handleOrderFlowBackToType = () => {
+    if (isSubMenuPage) {
+      setOrderFlow({ step: 'ready', type: 'takeaway', table: null })
+      return
+    }
     setOrderFlow({ step: 'type', type: null, table: null })
   }
 
@@ -2359,6 +2320,14 @@ function App() {
   const isSubMenuPage = currentPath === '/sub-menu'
   const isMenuInterface = isMenuPage || isSubMenuPage
   const isPaymentSuccessPage = currentPath === '/payment-success'
+  const readyOrderFlowMessage =
+    orderFlow.type === 'in-house' && orderFlow.table
+      ? `Table ${orderFlow.table} selected${
+          isSubMenuPage ? '. Review items and send to the kitchen when ready.' : ' for in-house service.'
+        }`
+      : !isSubMenuPage
+          ? 'Takeaway order selected.'
+          : null
   const paymentSuccessOrderNumber = latestOrderReference?.orderNumber || ''
   const paymentSuccessWhatsappUrl = buildWhatsappConfirmationUrl(paymentSuccessOrderNumber)
 
@@ -2761,7 +2730,7 @@ function App() {
                       Order Now
                     </button>
                   ) : null}
-                  {orderFlow.step === 'type' ? (
+                  {orderFlow.step === 'type' && !isSubMenuPage ? (
                     <div className="space-y-3">
                       <p className="text-base sm:text-lg font-semibold text-[#23314F] bg-[#F2F5FA] px-3 py-2 rounded">Is this an in-house or a takeaway order?</p>
                       <div className="flex flex-wrap gap-2">
@@ -2823,11 +2792,9 @@ function App() {
                   ) : null}
                   {orderFlow.step === 'ready' ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-gray-600">
-                        {orderFlow.type === 'in-house' && orderFlow.table
-                          ? `Table ${orderFlow.table} selected${isSubMenuPage ? '. Review items and send to the kitchen when ready.' : ' for in-house service.'}`
-                          : 'Takeaway order selected.'}
-                      </p>
+                      {readyOrderFlowMessage ? (
+                        <p className="text-sm text-gray-600">{readyOrderFlowMessage}</p>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         {orderFlow.type === 'in-house' ? (
                           <button
@@ -2838,13 +2805,15 @@ function App() {
                             Change table
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          onClick={handleOrderFlowBackToType}
-                          className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
-                        >
-                          Change order type
-                        </button>
+                        {!isSubMenuPage ? (
+                          <button
+                            type="button"
+                            onClick={handleOrderFlowBackToType}
+                            className="px-3 py-2 rounded border border-gray-300 text-xs font-semibold text-[#23314F] hover:bg-gray-100"
+                          >
+                            Change order type
+                          </button>
+                        ) : null}
                       </div>
                       <button
                         type="button"
@@ -3297,12 +3266,6 @@ function App() {
                     )}
                     <p className="text-xs text-gray-500 italic">*Actual product may vary from the photo.</p>
                   </div>
-                  {hasVisibleModifiers(expandedProductDetails.modifiers) ? (
-                    <div className="space-y-3 pt-2">
-                      <h4 className="text-sm font-semibold text-[#23314F]">Modifiers</h4>
-                      <ModifiersList modifiers={expandedProductDetails.modifiers} />
-                    </div>
-                  ) : null}
                   {!expandedProductDetails.isInStock && expandedProductDetails.normalizedAvailability ? (
                     <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                       {expandedProductDetails.availability}
@@ -3573,12 +3536,6 @@ function App() {
                 ) : (
                   <p className="text-sm sm:text-base text-gray-500 italic">Description coming soon.</p>
                 )}
-                {hasVisibleModifiers(selectedProduct?.modifiers) ? (
-                  <div className="space-y-3 pt-2">
-                    <h4 className="text-sm font-semibold text-[#23314F]">Modifiers</h4>
-                    <ModifiersList modifiers={selectedProduct?.modifiers} />
-                  </div>
-                ) : null}
                 {selectedProduct?.availability && selectedProduct.availability.toLowerCase() !== 'in stock' && (
                   <span className="inline-block text-xs uppercase tracking-wide text-yellow-900 bg-yellow-200 px-2 py-0.5 rounded">
                     {selectedProduct.availability}
