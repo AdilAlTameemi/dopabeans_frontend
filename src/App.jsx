@@ -593,7 +593,8 @@ const sanitizeStoredCartItem = (entry) => {
     entryKey,
     quantity,
     milk: inferredMilk ?? null,
-    bean: inferredBean ?? null
+    bean: inferredBean ?? null,
+    selectedOptions: hydrateSelectedOptionsFromStorage(entry.selectedOptions)
   }
 }
 
@@ -719,6 +720,88 @@ const persistOrderReference = (orderNumber) => {
 }
 
 
+const serializeSelectedOptionsForStorage = (options) => {
+  if (!Array.isArray(options) || options.length === 0) {
+    return []
+  }
+
+  return options
+    .map((option) => {
+      if (!option || typeof option !== 'object') return null
+      const modifierOptionIdRaw =
+        option.modifierOptionId ??
+        option.modifier_option_id ??
+        option.optionId ??
+        option.option_id ??
+        option.id
+      if (!modifierOptionIdRaw) return null
+
+      const modifierIdRaw =
+        option.modifierId ??
+        option.modifier_id ??
+        option.parentModifierId ??
+        (option.modifier ? option.modifier.id : null) ??
+        null
+      if (!modifierIdRaw) return null
+
+      const modifierOptionId = normalizeSelectionValue(modifierOptionIdRaw)
+      const modifierId = normalizeSelectionValue(modifierIdRaw)
+      if (!modifierOptionId || !modifierId) return null
+
+      const unitPriceValue = Number(
+        option.unitPrice ?? option.unit_price ?? option.price ?? option.unit_price_value
+      )
+      const partitionValue = Number(option.partition)
+      const quantityValue = Number(option.quantity)
+      const totalPriceValue = Number(option.totalPrice ?? option.total_price)
+
+      return {
+        modifierId,
+        modifierOptionId,
+        name: option.name ?? null,
+        unitPrice: Number.isFinite(unitPriceValue) ? Number(unitPriceValue.toFixed(2)) : null,
+        partition: Number.isFinite(partitionValue) && partitionValue > 0 ? partitionValue : 1,
+        quantity: Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : null,
+        totalPrice: Number.isFinite(totalPriceValue) ? Number(totalPriceValue.toFixed(2)) : null
+      }
+    })
+    .filter(Boolean)
+}
+
+const hydrateSelectedOptionsFromStorage = (options) => {
+  if (!Array.isArray(options) || options.length === 0) {
+    return []
+  }
+
+  return options
+    .map((option) => {
+      if (!option || typeof option !== 'object') return null
+      const optionId = option.modifierOptionId || option.modifier_option_id || option.id
+      const modifierId = option.modifierId || option.modifier_id
+      if (!optionId || !modifierId) return null
+
+      const modifierOptionId = normalizeSelectionValue(optionId)
+      const normalizedModifierId = normalizeSelectionValue(modifierId)
+      if (!modifierOptionId || !normalizedModifierId) return null
+
+      const unitPriceValue = Number(option.unitPrice ?? option.unit_price)
+      const partitionValue = Number(option.partition)
+      const quantityValue = Number(option.quantity)
+      const totalPriceValue = Number(option.totalPrice ?? option.total_price)
+
+      return {
+        modifierId: normalizedModifierId,
+        modifierOptionId,
+        name: option.name ?? null,
+        unitPrice: Number.isFinite(unitPriceValue) ? Number(unitPriceValue.toFixed(2)) : null,
+        partition: Number.isFinite(partitionValue) && partitionValue > 0 ? partitionValue : 1,
+        quantity: Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : null,
+        totalPrice: Number.isFinite(totalPriceValue) ? Number(totalPriceValue.toFixed(2)) : null
+      }
+    })
+    .filter(Boolean)
+}
+
 const serializeCartItemsForStorage = (items, savedAt) => {
   const timestamp = Number.isFinite(savedAt) ? savedAt : Date.now()
 
@@ -732,7 +815,8 @@ const serializeCartItemsForStorage = (items, savedAt) => {
       entryKey: item.entryKey,
       quantity: item.quantity,
       milk: item.milk ?? null,
-      bean: item.bean ?? null
+      bean: item.bean ?? null,
+      selectedOptions: serializeSelectedOptionsForStorage(item.selectedOptions)
     }))
   }
 }
@@ -846,6 +930,90 @@ const convertSelectorOptionsToModifierOptions = (options) =>
     price: option.price != null ? Number(option.price) : null,
     is_default: option.isDefault ?? false
   }))
+
+const normalizeSelectionValue = (value) => {
+  if (value == null) return ''
+  const stringified = typeof value === 'string' ? value : String(value)
+  return stringified.trim()
+}
+
+const normalizeValueForComparison = (value) => {
+  const normalized = normalizeSelectionValue(value)
+  return normalized.toLowerCase()
+}
+
+const findModifierOptionByValue = (product, rawValue) => {
+  const normalizedValue = normalizeSelectionValue(rawValue)
+  if (!normalizedValue || !product || typeof product !== 'object') return null
+  const comparisonTarget = normalizeValueForComparison(normalizedValue)
+
+  const modifiers = Array.isArray(product.modifiers) ? product.modifiers : []
+  for (const modifier of modifiers) {
+    const options = Array.isArray(modifier?.options) ? modifier.options : []
+    for (const option of options) {
+      const candidateValue = buildModifierOptionValue(option)
+      if (candidateValue && normalizeValueForComparison(candidateValue) === comparisonTarget) {
+        return { modifier, option }
+      }
+
+      const label = normalizeModifierOptionLabel(option)
+      if (label && normalizeValueForComparison(label).includes(comparisonTarget)) {
+        return { modifier, option }
+      }
+    }
+  }
+
+  return null
+}
+
+const collectModifierSelectionsForValues = (product, values) => {
+  if (!product || !Array.isArray(values) || values.length === 0) {
+    return []
+  }
+
+  const uniqueValues = Array.from(
+    new Set(values.map((value) => normalizeSelectionValue(value)).filter(Boolean))
+  )
+  if (uniqueValues.length === 0) {
+    return []
+  }
+
+  const selections = []
+  const seenOptionIds = new Set()
+
+  uniqueValues.forEach((value) => {
+    const match = findModifierOptionByValue(product, value)
+    if (!match) return
+
+    const optionId = match.option && match.option.id != null ? normalizeSelectionValue(match.option.id) : ''
+    if (!optionId || seenOptionIds.has(optionId)) {
+      return
+    }
+
+    const modifierId =
+      match.modifier && match.modifier.id != null ? normalizeSelectionValue(match.modifier.id) : ''
+    if (!modifierId) {
+      return
+    }
+
+    const optionPriceValue = Number(match.option?.price)
+    const unitPrice = Number.isFinite(optionPriceValue) ? Number(optionPriceValue.toFixed(2)) : null
+
+    selections.push({
+      modifierId,
+      modifierOptionId: optionId,
+      name: match.option?.name ?? null,
+      unitPrice,
+      partition: 1
+    })
+    seenOptionIds.add(optionId)
+  })
+
+  return selections
+}
+
+const cloneSelectedOptions = (options) =>
+  Array.isArray(options) ? options.map((option) => (option && typeof option === 'object' ? { ...option } : option)) : []
 
 const mapProductToDetails = (item = {}) => {
   const availabilityFlag = interpretYesNoValue(item.isAvailable ?? item.availability)
@@ -1695,11 +1863,59 @@ function App() {
         const product = item.product || {}
         const detail = itemDetails[index] || {}
         const rawUnitPrice = Number(product.price)
-        const unitPrice = Number.isFinite(rawUnitPrice) ? Number(rawUnitPrice.toFixed(2)) : null
+        const unitPrice = Number.isFinite(rawUnitPrice) ? Number(rawUnitPrice.toFixed(2)) : 0
         const quantityValue = Number(item.quantity)
         const quantity = Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1
         const milkLabel = getMilkLabel(item.milk) || detail.milk || null
         const beanLabel = getBeanLabel(item.bean) || detail.bean || null
+        const selectedOptions = Array.isArray(item.selectedOptions) ? item.selectedOptions : []
+        const optionEntries = selectedOptions
+          .map((option) => {
+            if (!option || typeof option !== 'object') return null
+            const optionId =
+              option.modifierOptionId ||
+              option.modifier_option_id ||
+              option.optionId ||
+              option.option_id ||
+              option.id
+            const modifierId = option.modifierId || option.modifier_id
+            if (!optionId || !modifierId) return null
+
+            const modifierOptionId = normalizeSelectionValue(optionId)
+            const normalizedModifierId = normalizeSelectionValue(modifierId)
+            if (!modifierOptionId || !normalizedModifierId) return null
+
+            const optionQuantityValue = Number(option.quantity)
+            const optionQuantity =
+              Number.isFinite(optionQuantityValue) && optionQuantityValue > 0 ? optionQuantityValue : quantity
+
+            const optionUnitPriceValue = Number(option.unitPrice ?? option.unit_price ?? option.price)
+            const optionUnitPrice = Number.isFinite(optionUnitPriceValue)
+              ? Number(optionUnitPriceValue.toFixed(2))
+              : 0
+            const optionTotalPrice = Number((optionUnitPrice * optionQuantity).toFixed(2))
+            const partitionValue = Number(option.partition)
+            const partition = Number.isFinite(partitionValue) && partitionValue > 0 ? partitionValue : 1
+
+            return {
+              modifier_option_id: modifierOptionId,
+              modifier_id: normalizedModifierId,
+              quantity: optionQuantity,
+              unit_price: optionUnitPrice,
+              total_price: option.totalPrice != null && Number.isFinite(Number(option.totalPrice))
+                ? Number(option.totalPrice)
+                : optionTotalPrice,
+              partition
+            }
+          })
+          .filter(Boolean)
+
+        const baseLineTotal = Number((unitPrice * quantity).toFixed(2))
+        const optionsTotal = optionEntries.reduce((sum, entry) => {
+          const total = Number(entry.total_price)
+          return Number.isFinite(total) ? sum + total : sum
+        }, 0)
+        const totalPrice = Number((baseLineTotal + optionsTotal).toFixed(2))
 
         return {
           product_id: product.id ?? product.productId ?? null,
@@ -1707,6 +1923,10 @@ function App() {
           name: product.name ?? detail.name ?? 'Drink',
           quantity,
           unit_price: unitPrice,
+          total_price: totalPrice,
+          tax_exclusive_unit_price: unitPrice,
+          tax_exclusive_total_price: totalPrice,
+          options: optionEntries,
           milk_label: milkLabel,
           milk_value: item.milk ?? detail.milk_value ?? null,
           bean_label: beanLabel,
@@ -1722,6 +1942,10 @@ function App() {
           source: 'sub_menu'
         },
         items: kitchenItems
+      }
+
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        console.debug('Submitting sub-menu order payload', kitchenRequestPayload)
       }
 
       const endpoint = buildBackendUrl('/api/submenu-orders')
@@ -1975,6 +2199,12 @@ function App() {
         ? selectedBean
         : fallbackBean
       : null
+
+    const selectionValues = []
+    if (milk) selectionValues.push(milk)
+    if (bean) selectionValues.push(bean)
+    const selectedOptions = collectModifierSelectionsForValues(product, selectionValues)
+
     const targetKey = getProductKey(product)
     const entryKeyParts = [targetKey]
     if (milk) entryKeyParts.push(`milk-${milk}`)
@@ -2016,6 +2246,11 @@ function App() {
         const newQuantity =
           mode === 'update' ? quantity : (Number(existingItem.quantity) || 0) + quantity
 
+        const nextSelectedOptions =
+          Array.isArray(selectedOptions) && selectedOptions.length > 0
+            ? cloneSelectedOptions(selectedOptions)
+            : cloneSelectedOptions(existingItem.selectedOptions)
+
         updated[existingIndex] = {
           ...existingItem,
           id: mode === 'update' && resolvedOriginalEntryId ? resolvedOriginalEntryId : existingItem.id,
@@ -2024,7 +2259,8 @@ function App() {
           entryKey,
           quantity: newQuantity,
           milk,
-          bean
+          bean,
+          selectedOptions: nextSelectedOptions
         }
         return updated
       }
@@ -2041,7 +2277,8 @@ function App() {
           entryKey,
           quantity,
           milk,
-          bean
+          bean,
+          selectedOptions: cloneSelectedOptions(selectedOptions)
         }
       ]
     })
