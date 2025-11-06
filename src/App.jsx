@@ -1899,7 +1899,6 @@ function App() {
 
             return {
               modifier_option_id: modifierOptionId,
-              modifier_id: normalizedModifierId,
               quantity: optionQuantity,
               unit_price: optionUnitPrice,
               total_price: option.totalPrice != null && Number.isFinite(Number(option.totalPrice))
