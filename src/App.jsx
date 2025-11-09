@@ -162,6 +162,16 @@ const PRODUCT_NAME_OVERRIDES = {
   pdct410: 'Kids Mojito'
 }
 
+const SITE_DEACTIVATED = true
+
+const FOODICS_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const isLikelyFoodicsId = (value) => {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  return FOODICS_ID_REGEX.test(trimmed)
+}
+
 const DEFAULT_PROD_BACKEND_URL = 'https://dopabeans-backend.onrender.com'
 const DEFAULT_LOCAL_BACKEND_URL = 'http://127.0.0.1:8000'
 
@@ -1215,6 +1225,14 @@ const hasVisibleText = (element) => {
 }
 
 function App() {
+  if (SITE_DEACTIVATED) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F2F5FA]">
+        <p className="text-2xl font-semibold text-[#23314F] text-center px-6">This Page has been Deactivated</p>
+      </div>
+    )
+  }
+
   const initialCartSnapshotRef = useRef(null)
   if (initialCartSnapshotRef.current === null) {
     initialCartSnapshotRef.current = loadStoredCartSnapshot()
@@ -1884,6 +1902,9 @@ function App() {
             const modifierOptionId = normalizeSelectionValue(optionId)
             const normalizedModifierId = normalizeSelectionValue(modifierId)
             if (!modifierOptionId || !normalizedModifierId) return null
+            if (!isLikelyFoodicsId(modifierOptionId)) {
+              return null
+            }
 
             const optionQuantityValue = Number(option.quantity)
             const optionQuantity =
